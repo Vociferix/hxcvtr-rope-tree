@@ -200,136 +200,94 @@ impl<T: Adapter> RopeTree<T> {
         self.get_mut(node_id).weight = weight;
     }
 
-    fn rotate_left(&mut self, node_id: usize) -> usize {
-        let (parent_id, right_id, left_id) = self.map(node_id, |node| {
-            assert_ne!(node.right, NULL);
-            (node.parent, node.right, node.left)
+    fn rotate_left(&mut self, node_id: usize) {
+        let (parent_id, left_id, right_id) = self.map(node_id, |node| {
+            debug_assert_ne!(node.right, NULL);
+            (node.parent, node.left, node.right)
         });
-        let right_left_id = self.left(right_id);
-        let (right_left_depth, right_left_weight) = self.try_map(right_left_id, |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, 0));
         let (left_depth, left_weight) = self.try_map(left_id, |node| {
             (node.depth, node.weight)
         }).unwrap_or((0, 0));
-
+        let (right_left_id, right_right_id, right_depth, right_len) = self.map(right_id, |node| {
+            (node.left, node.right, node.depth, T::len(&node.data))
+        });
+        let (right_right_depth, right_right_weight) = self.try_map(right_right_id, |node| {
+            (node.depth, node.weight)
+        }).unwrap_or((0, 0));
+        let (right_left_depth, right_left_weight) = self.try_map_mut(right_left_id, |node| {
+            node.parent = node_id;
+            (node.depth, node.weight)
+        }).unwrap_or((0, 0));
         let (depth, weight) = self.map_mut(node_id, |node| {
             node.parent = right_id;
             node.right = right_left_id;
-            node.depth = if left_depth < right_left_depth {
-                right_left_depth + 1
-            } else {
-                left_depth + 1
-            };
+            node.depth = if left_depth > right_left_depth { left_depth } else { right_left_depth };
             node.weight = left_weight + right_left_weight + T::len(&node.data);
             (node.depth, node.weight)
         });
-
-        let (right_right_depth, right_right_weight) = self.try_map(self.right(right_id), |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, 0));
-        let (right_depth, right_weight) = self.map_mut(right_id, |node| {
+        self.map_mut(right_id, |node| {
             node.parent = parent_id;
             node.left = node_id;
-            node.depth = if depth < right_right_depth {
-                right_right_depth + 1
-            } else {
-                depth + 1
-            };
+            node.depth = if depth > right_right_depth { depth } else { right_right_depth };
             node.weight = weight + right_right_weight + T::len(&node.data);
-            (node.depth, node.weight)
         });
-
-        if parent_id != NULL {
-            let parent_other_id = self.map(parent_id, |node| {
-                if node.left == node_id {
-                    node.right
+        if parent_id == NULL {
+            self.root = right_id;
+        } else {
+            self.map_mut(parent_id, |node| {
+                let left_id = node.left;
+                if left_id == node_id {
+                    node.left = right_id;
                 } else {
-                    node.left
+                    node.right = right_id;
                 }
             });
-            let (parent_other_depth, parent_other_weight) = self.try_map(parent_other_id, |node| {
-                (node.depth, node.weight)
-            }).unwrap_or((0, 0));
-            self.map_mut(parent_id, |node| {
-                node.depth = if parent_other_depth < right_depth {
-                    right_depth + 1
-                } else {
-                    parent_other_depth + 1
-                };
-                node.weight = parent_other_weight + right_weight + T::len(&node.data);
-            });
-        } else {
-            self.root = right_id;
         }
-
-        right_id
     }
 
-    fn rotate_right(&mut self, node_id: usize) -> usize {
+    fn rotate_right(&mut self, node_id: usize) {
         let (parent_id, right_id, left_id) = self.map(node_id, |node| {
-            assert_ne!(node.right, NULL);
+            debug_assert_ne!(node.left, NULL);
             (node.parent, node.right, node.left)
         });
-        let left_right_id = self.right(left_id);
-        let (left_right_depth, left_right_weight) = self.try_map(left_right_id, |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, 0));
         let (right_depth, right_weight) = self.try_map(right_id, |node| {
             (node.depth, node.weight)
         }).unwrap_or((0, 0));
-
+        let (left_right_id, left_left_id, left_depth, left_len) = self.map(left_id, |node| {
+            (node.right, node.left, node.depth, T::len(&node.data))
+        });
+        let (left_left_depth, left_left_weight) = self.try_map(left_left_id, |node| {
+            (node.depth, node.weight)
+        }).unwrap_or((0, 0));
+        let (left_right_depth, left_right_weight) = self.try_map_mut(left_right_id, |node| {
+            node.parent = node_id;
+            (node.depth, node.weight)
+        }).unwrap_or((0, 0));
         let (depth, weight) = self.map_mut(node_id, |node| {
             node.parent = left_id;
-            node.right = left_right_id;
-            node.depth = if right_depth < left_right_depth {
-                left_right_depth + 1
-            } else {
-                right_depth + 1
-            };
+            node.left = left_right_id;
+            node.depth = if right_depth > left_right_depth { right_depth } else { left_right_depth };
             node.weight = right_weight + left_right_weight + T::len(&node.data);
             (node.depth, node.weight)
         });
-
-        let (left_left_depth, left_left_weight) = self.try_map(self.left(left_id), |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, 0));
-        let (left_depth, left_weight) = self.map_mut(left_id, |node| {
+        self.map_mut(left_id, |node| {
             node.parent = parent_id;
             node.right = node_id;
-            node.depth = if depth < left_left_depth {
-                left_left_depth + 1
-            } else {
-                depth + 1
-            };
+            node.depth = if depth > left_left_depth { depth } else { left_left_depth };
             node.weight = weight + left_left_weight + T::len(&node.data);
-            (node.depth, node.weight)
         });
-
-        if parent_id != NULL {
-            let parent_other_id = self.map(parent_id, |node| {
-                if node.left == node_id {
-                    node.right
+        if parent_id == NULL {
+            self.root = left_id;
+        } else {
+            self.map_mut(parent_id, |node| {
+                let right_id = node.right;
+                if right_id == node_id {
+                    node.right = left_id;
                 } else {
-                    node.left
+                    node.left = left_id;
                 }
             });
-            let (parent_other_depth, parent_other_weight) = self.try_map(parent_other_id, |node| {
-                (node.depth, node.weight)
-            }).unwrap_or((0, 0));
-            self.map_mut(parent_id, |node| {
-                node.depth = if parent_other_depth < left_depth {
-                    left_depth + 1
-                } else {
-                    parent_other_depth + 1
-                };
-                node.weight = parent_other_weight + left_weight + T::len(&node.data);
-            });
-        } else {
-            self.root = left_id;
         }
-
-        left_id
     }
 
     pub fn is_empty(&self) -> bool {
@@ -551,7 +509,7 @@ impl<T: Adapter> RopeTree<T> {
                 let right_left_depth = if right_left_id == NULL { 0 } else { self.depth(right_left_id) };
                 let right_right_depth = if right_right_id == NULL { 0 } else { self.depth(right_right_id) };
                 let balance = right_right_depth as i64 - right_left_depth as i64;
-                if balance > 0 {
+                if balance < 0 {
                     self.rotate_right(right_id);
                     self.rotate_left(node_id);
                 } else {
@@ -560,6 +518,24 @@ impl<T: Adapter> RopeTree<T> {
             }
             node_id = parent_id;
         }
+    }
+
+    pub fn debug_print_impl<F: FnMut(&T::Node)>(&self, node_id: usize, depth: usize, f: &mut F) {
+        if node_id != NULL {
+            self.debug_print_impl(self.right(node_id), depth + 1, f);
+
+            for _ in 0..depth {
+                print!(" ");
+            }
+            f(&self.get(node_id).data);
+
+            self.debug_print_impl(self.left(node_id), depth + 1, f);
+        }
+    }
+
+    pub fn debug_print<F: FnMut(&T::Node)>(&self, mut f: F) {
+        self.debug_print_impl(self.root, 0, &mut f);
+        println!("----------------")
     }
 }
 
@@ -978,21 +954,14 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             if next_id != NULL {
                 self.tree.set_prev(next_id, tmp);
             }
+            self.tree.repair(node_id);
         } else {
-            loop {
-                let left_id = self.tree.left(node_id);
-                if left_id == NULL {
-                    break;
-                }
-                node_id = left_id;
-            }
-            let tmp = self.tree.alloc(Node::new(node_id, node_id, next_id, node));
-            self.tree.set_left(node_id, tmp);
+            let tmp = self.tree.alloc(Node::new(next_id, node_id, next_id, node));
+            self.tree.set_left(next_id, tmp);
             self.tree.set_next(node_id, tmp);
             self.tree.set_prev(next_id, tmp);
+            self.tree.repair(next_id);
         }
-
-        self.tree.repair(node_id);
     }
 }
 
@@ -1011,6 +980,12 @@ mod tests {
 
     type TestTree = RopeTree<TestAdapter>;
 
+    fn print_tree(tree: &TestTree) {
+        tree.debug_print(|node| {
+            println!("{}", *node);
+        });
+    }
+
     #[test]
     fn general_test() {
         let mut tree: TestTree = RopeTree::with_root(10);
@@ -1020,30 +995,50 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 10);
             assert_eq!(*cursor.get().unwrap(), 10);
             assert_eq!(cursor.tree().len(), 10);
+            print_tree(cursor.tree());
 
             cursor.insert_after(20);
             assert_eq!(cursor.position().unwrap(), 0);
             assert_eq!(cursor.len().unwrap(), 10);
             assert_eq!(*cursor.get().unwrap(), 10);
             assert_eq!(cursor.tree().len(), 30);
+            print_tree(cursor.tree());
 
             cursor.move_next();
             assert_eq!(cursor.position().unwrap(), 10);
             assert_eq!(cursor.len().unwrap(), 20);
             assert_eq!(*cursor.get().unwrap(), 20);
             assert_eq!(cursor.tree().len(), 30);
+            print_tree(cursor.tree());
 
             cursor.insert_before(30);
             assert_eq!(cursor.position().unwrap(), 40);
             assert_eq!(cursor.len().unwrap(), 20);
             assert_eq!(*cursor.get().unwrap(), 20);
             assert_eq!(cursor.tree().len(), 60);
+            print_tree(cursor.tree());
 
             cursor.move_prev();
             assert_eq!(cursor.position().unwrap(), 10);
             assert_eq!(cursor.len().unwrap(), 30);
             assert_eq!(*cursor.get().unwrap(), 30);
             assert_eq!(cursor.tree().len(), 60);
+            print_tree(cursor.tree());
+
+            cursor.insert_after(25);
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+            assert_eq!(cursor.tree().len(), 85);
+            print_tree(cursor.tree());
+
+            cursor.move_next();
+            print_tree(cursor.tree());
+            assert_eq!(cursor.position().unwrap(), 40);
+            assert_eq!(cursor.len().unwrap(), 25);
+            assert_eq!(*cursor.get().unwrap(), 25);
+            assert_eq!(cursor.tree().len(), 85);
+            print_tree(cursor.tree());
         }
     }
 }
