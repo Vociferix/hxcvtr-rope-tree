@@ -58,6 +58,14 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    pub fn with_root(root: T::Node) -> Self {
+        Self {
+            arena: vec![Some(Node::new(NULL, NULL, NULL, root))],
+            free: Vec::new(),
+            root: 0,
+        }
+    }
+
     fn alloc(&mut self, node: Node<T>) -> usize {
         let node_id;
         let fc = self.free.len();
@@ -334,6 +342,14 @@ impl<T: Adapter> RopeTree<T> {
         self.arena.clear();
     }
 
+    pub fn null_cursor(&self) -> Cursor<T> {
+        Cursor::new(self, 0, NULL)
+    }
+
+    pub fn null_cursor_mut(&mut self) -> MutCursor<T> {
+        MutCursor::new(self, 0, NULL)
+    }
+
     fn front_impl(&self) -> usize {
         if self.root == NULL {
             NULL
@@ -476,13 +492,6 @@ impl<T: Adapter> RopeTree<T> {
         MutCursor::new(self, pos, node_id)
     }
 
-    pub fn insert<'a>(&'a mut self, pos: u64, node: T::Node) -> MutCursor<'a, T> {
-        let mut c = self.upper_bound_mut(pos);
-        c.insert_after(pos, node);
-        c.move_next();
-        c
-    }
-
     fn repair_weight_only(&mut self, mut node_id: usize) {
         while node_id != NULL {
             let (left_id, right_id, parent_id) = self.map(node_id, |node| {
@@ -589,6 +598,14 @@ impl<'a, T: Adapter> Cursor<'a, T> {
         }
     }
 
+    pub fn len(&self) -> Option<u64> {
+        if self.node == NULL {
+            None
+        } else {
+            Some(T::len(&self.tree.get(self.node).data))
+        }
+    }
+
     pub fn get(&self) -> Option<&T::Node> {
         self.tree.try_get(self.node).map(|node| &node.data)
     }
@@ -626,6 +643,7 @@ impl<'a, T: Adapter> Cursor<'a, T> {
             } else {
                 self.pos -= self.tree.map(prev_id, |node| T::len(&node.data))
             }
+            self.node = prev_id;
         }
     }
 
@@ -668,6 +686,14 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             None
         } else {
             Some(self.pos)
+        }
+    }
+
+    pub fn len(&self) -> Option<u64> {
+        if self.node == NULL {
+            None
+        } else {
+            Some(T::len(&self.tree.get(self.node).data))
         }
     }
 
@@ -726,6 +752,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             } else {
                 self.pos -= self.tree.map(prev_id, |node| T::len(&node.data))
             }
+            self.node = prev_id;
         }
     }
 
@@ -827,7 +854,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         } else {
             // both leaves
             let (next_parent_id, next_left_id, next_right_id, next_prev_id, next_next_id) = self.tree.map(next_id, |node| {
-                (node.parent, node.left, node.right, node.prev, node.next, T::len(&node.data))
+                (node.parent, node.left, node.right, node.prev, node.next)
             });
             self.tree.map_mut(node_id, |node| {
                 node.parent = next_parent_id;
@@ -902,11 +929,12 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         ret
     }
 
-    pub fn insert_before(&mut self, pos: u64, node: T::Node) {
+    pub fn insert_before(&mut self, node: T::Node) {
         let mut node_id = self.node;
         if node_id == NULL {
             self.move_prev();
         }
+        let len = T::len(&node);
 
         let (left_id, prev_id) = self.tree.map(self.node, |node| {
             (node.left, node.prev)
@@ -931,9 +959,10 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
 
         self.tree.repair(node_id);
+        self.pos += len;
     }
 
-    pub fn insert_after(&mut self, pos: u64, node: T::Node) {
+    pub fn insert_after(&mut self, node: T::Node) {
         let mut node_id = self.node;
         if node_id == NULL {
             self.move_next();
@@ -946,7 +975,9 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             let tmp = self.tree.alloc(Node::new(node_id, node_id, next_id, node));
             self.tree.set_right(node_id, tmp);
             self.tree.set_next(node_id, tmp);
-            self.tree.set_prev(next_id, tmp);
+            if next_id != NULL {
+                self.tree.set_prev(next_id, tmp);
+            }
         } else {
             loop {
                 let left_id = self.tree.left(node_id);
@@ -967,8 +998,52 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    struct TestAdapter { }
+
+    impl Adapter for TestAdapter {
+        type Node = u64;
+        fn len(node: &Self::Node) -> u64 {
+            *node
+        }
+    }
+
+    type TestTree = RopeTree<TestAdapter>;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn general_test() {
+        let mut tree: TestTree = RopeTree::with_root(10);
+        {
+            let mut cursor = tree.front_mut();
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+            assert_eq!(*cursor.get().unwrap(), 10);
+            assert_eq!(cursor.tree().len(), 10);
+
+            cursor.insert_after(20);
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+            assert_eq!(*cursor.get().unwrap(), 10);
+            assert_eq!(cursor.tree().len(), 30);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 20);
+            assert_eq!(*cursor.get().unwrap(), 20);
+            assert_eq!(cursor.tree().len(), 30);
+
+            cursor.insert_before(30);
+            assert_eq!(cursor.position().unwrap(), 40);
+            assert_eq!(cursor.len().unwrap(), 20);
+            assert_eq!(*cursor.get().unwrap(), 20);
+            assert_eq!(cursor.tree().len(), 60);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+            assert_eq!(cursor.tree().len(), 60);
+        }
     }
 }
