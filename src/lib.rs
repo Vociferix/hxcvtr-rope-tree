@@ -221,14 +221,14 @@ impl<T: Adapter> RopeTree<T> {
         let (depth, weight) = self.map_mut(node_id, |node| {
             node.parent = right_id;
             node.right = right_left_id;
-            node.depth = if left_depth > right_left_depth { left_depth } else { right_left_depth };
+            node.depth = if left_depth > right_left_depth { left_depth } else { right_left_depth } + 1;
             node.weight = left_weight + right_left_weight + T::len(&node.data);
             (node.depth, node.weight)
         });
         self.map_mut(right_id, |node| {
             node.parent = parent_id;
             node.left = node_id;
-            node.depth = if depth > right_right_depth { depth } else { right_right_depth };
+            node.depth = if depth > right_right_depth { depth } else { right_right_depth } + 1;
             node.weight = weight + right_right_weight + T::len(&node.data);
         });
         if parent_id == NULL {
@@ -266,14 +266,14 @@ impl<T: Adapter> RopeTree<T> {
         let (depth, weight) = self.map_mut(node_id, |node| {
             node.parent = left_id;
             node.left = left_right_id;
-            node.depth = if right_depth > left_right_depth { right_depth } else { left_right_depth };
+            node.depth = if right_depth > left_right_depth { right_depth } else { left_right_depth } + 1;
             node.weight = right_weight + left_right_weight + T::len(&node.data);
             (node.depth, node.weight)
         });
         self.map_mut(left_id, |node| {
             node.parent = parent_id;
             node.right = node_id;
-            node.depth = if depth > left_left_depth { depth } else { left_left_depth };
+            node.depth = if depth > left_left_depth { depth } else { left_left_depth } + 1;
             node.weight = weight + left_left_weight + T::len(&node.data);
         });
         if parent_id == NULL {
@@ -518,24 +518,6 @@ impl<T: Adapter> RopeTree<T> {
             }
             node_id = parent_id;
         }
-    }
-
-    pub fn debug_print_impl<F: FnMut(&T::Node)>(&self, node_id: usize, depth: usize, f: &mut F) {
-        if node_id != NULL {
-            self.debug_print_impl(self.right(node_id), depth + 1, f);
-
-            for _ in 0..depth {
-                print!(" ");
-            }
-            f(&self.get(node_id).data);
-
-            self.debug_print_impl(self.left(node_id), depth + 1, f);
-        }
-    }
-
-    pub fn debug_print<F: FnMut(&T::Node)>(&self, mut f: F) {
-        self.debug_print_impl(self.root, 0, &mut f);
-        println!("----------------")
     }
 }
 
@@ -980,10 +962,23 @@ mod tests {
 
     type TestTree = RopeTree<TestAdapter>;
 
+    fn print_tree_impl(tree: &TestTree, node_id: usize, depth: usize) {
+        if node_id != NULL {
+            print_tree_impl(tree, tree.right(node_id), depth + 1);
+
+            for _ in 0..depth {
+                print!(" ");
+            }
+            println!("{} | depth={} | weight={}", tree.get(node_id).data, tree.depth(node_id), tree.weight(node_id));
+
+            print_tree_impl(tree, tree.left(node_id), depth + 1);
+        }
+    }
+
     fn print_tree(tree: &TestTree) {
-        tree.debug_print(|node| {
-            println!("{}", *node);
-        });
+        println!("--------------------------------------------------------------------------------");
+        print_tree_impl(tree, tree.root, 0);
+        println!("--------------------------------------------------------------------------------");
     }
 
     #[test]
@@ -1009,7 +1004,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 20);
             assert_eq!(*cursor.get().unwrap(), 20);
             assert_eq!(cursor.tree().len(), 30);
-            print_tree(cursor.tree());
 
             cursor.insert_before(30);
             assert_eq!(cursor.position().unwrap(), 40);
@@ -1023,7 +1017,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 30);
             assert_eq!(*cursor.get().unwrap(), 30);
             assert_eq!(cursor.tree().len(), 60);
-            print_tree(cursor.tree());
 
             cursor.insert_after(25);
             assert_eq!(cursor.position().unwrap(), 10);
@@ -1033,12 +1026,10 @@ mod tests {
             print_tree(cursor.tree());
 
             cursor.move_next();
-            print_tree(cursor.tree());
             assert_eq!(cursor.position().unwrap(), 40);
             assert_eq!(cursor.len().unwrap(), 25);
             assert_eq!(*cursor.get().unwrap(), 25);
             assert_eq!(cursor.tree().len(), 85);
-            print_tree(cursor.tree());
         }
     }
 }
