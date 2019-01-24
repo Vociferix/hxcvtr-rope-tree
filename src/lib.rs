@@ -388,10 +388,10 @@ impl<T: Adapter> RopeTree<T> {
                             if curr + node_len > pos {
                                 return (curr, node_id);
                             } else {
-                                curr += node_len;
                                 if node.right == NULL {
                                     return (curr, node_id);
                                 } else {
+                                    curr += node_len;
                                     node_id = node.right;
                                     node = self.get(node_id);
                                 }
@@ -403,10 +403,10 @@ impl<T: Adapter> RopeTree<T> {
                         if curr + node_len > pos {
                             return (curr, node_id);
                         } else {
-                            curr += node_len;
                             if node.right == NULL {
                                 return (curr, node_id);
                             } else {
+                                curr += node_len;
                                 node_id = node.right;
                                 node = self.get(node_id);
                             }
@@ -428,15 +428,20 @@ impl<T: Adapter> RopeTree<T> {
     }
 
     fn lower_bound_impl(&self, pos: u64) -> (u64, usize) {
-        let (curr, node_id) = self.upper_bound_impl(pos);
-        if node_id == NULL {
-            (curr, NULL)
+        if self.root == NULL {
+            (0, NULL)
         } else {
-            let len = self.map(node_id, |node| {
-                T::len(&node.data)
-            });
-            let next_id = self.next(node_id);
-            (curr + len, next_id)
+            let ret = self.upper_bound_impl(pos);
+            if ret.0 < pos {
+                let node = self.get(ret.1);
+                if node.next == NULL {
+                    (self.weight(self.root), NULL)
+                } else {
+                    (ret.0 + T::len(&node.data), node.next)
+                }
+            } else {
+                ret
+            }
         }
     }
 
@@ -447,6 +452,25 @@ impl<T: Adapter> RopeTree<T> {
 
     pub fn lower_bound_mut<'a>(&'a mut self, pos: u64) -> MutCursor<'a, T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
+        MutCursor::new(self, pos, node_id)
+    }
+
+    fn find_impl(&self, pos: u64) -> (u64, usize) {
+        let len = self.len();
+        if pos >= len {
+            (len, NULL)
+        } else {
+            self.upper_bound_impl(pos)
+        }
+    }
+
+    pub fn find<'a>(&'a self, pos: u64) -> Cursor<'a, T> {
+        let (pos, node_id) = self.find_impl(pos);
+        Cursor::new(self, pos, node_id)
+    }
+
+    pub fn find_mut<'a>(&'a mut self, pos: u64) -> MutCursor<'a, T> {
+        let (pos, node_id) = self.find_impl(pos);
         MutCursor::new(self, pos, node_id)
     }
 
@@ -974,8 +998,27 @@ mod tests {
         println!("--------------------------------------------------------------------------------");
     }
 
+    fn new_test_tree() -> TestTree {
+        let mut tree: TestTree = RopeTree::with_root(10);
+        {
+            let mut cursor = tree.front_mut();
+            cursor.insert_after(20);
+            cursor.move_next();
+            cursor.insert_before(30);
+            cursor.move_prev();
+            cursor.insert_after(25);
+            cursor.move_next();
+            cursor.insert_before(15);
+            cursor.move_prev();
+            cursor.move_prev();
+            cursor.insert_after(35);
+            cursor.insert_before(40);
+        }
+        tree
+    }
+
     #[test]
-    fn general_test() {
+    fn insert_test() {
         let mut tree: TestTree = RopeTree::with_root(10);
         {
             let mut cursor = tree.front_mut();
@@ -1074,6 +1117,156 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 40);
             assert_eq!(*cursor.get().unwrap(), 40);
             assert_eq!(cursor.tree().len(), 175);
+        }
+
+        {
+            let mut cursor = tree.front();
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+            assert_eq!(*cursor.get().unwrap(), 10);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 40);
+            assert_eq!(*cursor.get().unwrap(), 40);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 50);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+            assert_eq!(*cursor.get().unwrap(), 35);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 115);
+            assert_eq!(cursor.len().unwrap(), 15);
+            assert_eq!(*cursor.get().unwrap(), 15);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 130);
+            assert_eq!(cursor.len().unwrap(), 25);
+            assert_eq!(*cursor.get().unwrap(), 25);
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 155);
+            assert_eq!(cursor.len().unwrap(), 20);
+            assert_eq!(*cursor.get().unwrap(), 20);
+        }
+
+        {
+            let mut cursor = tree.back();
+            assert_eq!(cursor.position().unwrap(), 155);
+            assert_eq!(cursor.len().unwrap(), 20);
+            assert_eq!(*cursor.get().unwrap(), 20);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 130);
+            assert_eq!(cursor.len().unwrap(), 25);
+            assert_eq!(*cursor.get().unwrap(), 25);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 115);
+            assert_eq!(cursor.len().unwrap(), 15);
+            assert_eq!(*cursor.get().unwrap(), 15);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+            assert_eq!(*cursor.get().unwrap(), 35);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 50);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 40);
+            assert_eq!(*cursor.get().unwrap(), 40);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+            assert_eq!(*cursor.get().unwrap(), 10);
+        }
+    }
+
+    #[test]
+    fn lower_bound_test() {
+        let tree = new_test_tree();
+        {
+            let cursor = tree.lower_bound(60);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+        }
+        {
+            let cursor = tree.lower_bound(80);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+        }
+        {
+            let cursor = tree.lower_bound(81);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 115);
+            assert_eq!(cursor.len().unwrap(), 15);
+        }
+        {
+            let cursor = tree.lower_bound(0);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+        }
+        {
+            let cursor = tree.lower_bound(155);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 155);
+            assert_eq!(cursor.len().unwrap(), 20);
+        }
+        {
+            let cursor = tree.lower_bound(156);
+            assert!(cursor.is_null());
+            assert!(cursor.position().is_none());
+            assert!(cursor.len().is_none());
+        }
+    }
+
+    #[test]
+    fn upper_bound_test() {
+        let tree = new_test_tree();
+        {
+            let cursor = tree.upper_bound(85);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+        }
+        {
+            let cursor = tree.upper_bound(80);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+        }
+        {
+            let cursor = tree.upper_bound(79);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 50);
+            assert_eq!(cursor.len().unwrap(), 30);
+        }
+        {
+            let cursor = tree.upper_bound(0);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+        }
+        {
+            let cursor = tree.upper_bound(200);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 155);
+            assert_eq!(cursor.len().unwrap(), 20);
         }
     }
 }
