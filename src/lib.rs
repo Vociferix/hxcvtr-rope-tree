@@ -902,21 +902,14 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             self.tree.set_left(node_id, tmp);
             self.tree.set_prev(node_id, tmp);
             self.tree.set_next(prev_id, tmp);
+            self.tree.repair(node_id);
         } else {
-            loop {
-                let right_id = self.tree.right(node_id);
-                if right_id == NULL {
-                    break;
-                }
-                node_id = right_id;
-            }
-            let tmp = self.tree.alloc(Node::new(node_id, prev_id, node_id, node));
-            self.tree.set_right(node_id, tmp);
+            let tmp = self.tree.alloc(Node::new(prev_id, prev_id, node_id, node));
+            self.tree.set_right(prev_id, tmp);
             self.tree.set_prev(node_id, tmp);
             self.tree.set_next(prev_id, tmp);
+            self.tree.repair(prev_id);
         }
-
-        self.tree.repair(node_id);
         self.pos += len;
     }
 
@@ -1030,6 +1023,57 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 25);
             assert_eq!(*cursor.get().unwrap(), 25);
             assert_eq!(cursor.tree().len(), 85);
+
+            cursor.insert_before(15);
+            assert_eq!(cursor.position().unwrap(), 55);
+            assert_eq!(cursor.len().unwrap(), 25);
+            assert_eq!(*cursor.get().unwrap(), 25);
+            assert_eq!(cursor.tree().len(), 100);
+            print_tree(cursor.tree());
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 40);
+            assert_eq!(cursor.len().unwrap(), 15);
+            assert_eq!(*cursor.get().unwrap(), 15);
+            assert_eq!(cursor.tree().len(), 100);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+            assert_eq!(cursor.tree().len(), 100);
+
+            cursor.insert_after(35);
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+            assert_eq!(cursor.tree().len(), 135);
+            print_tree(cursor.tree());
+
+            cursor.move_next();
+            assert_eq!(cursor.position().unwrap(), 40);
+            assert_eq!(cursor.len().unwrap(), 35);
+            assert_eq!(*cursor.get().unwrap(), 35);
+            assert_eq!(cursor.tree().len(), 135);
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+            assert_eq!(cursor.tree().len(), 135);
+
+            cursor.insert_before(40);
+            assert_eq!(cursor.position().unwrap(), 50);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(*cursor.get().unwrap(), 30);
+            assert_eq!(cursor.tree().len(), 175);
+            print_tree(cursor.tree());
+
+            cursor.move_prev();
+            assert_eq!(cursor.position().unwrap(), 10);
+            assert_eq!(cursor.len().unwrap(), 40);
+            assert_eq!(*cursor.get().unwrap(), 40);
+            assert_eq!(cursor.tree().len(), 175);
         }
     }
 }
