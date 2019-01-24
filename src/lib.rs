@@ -144,10 +144,6 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
-    fn parent(&self, node_id: usize) -> usize {
-        self.get(node_id).parent
-    }
-
     fn set_parent(&mut self, node_id: usize, parent: usize) {
         self.get_mut(node_id).parent = parent;
     }
@@ -176,10 +172,6 @@ impl<T: Adapter> RopeTree<T> {
         self.get_mut(node_id).prev = prev;
     }
 
-    fn next(&self, node_id: usize) -> usize {
-        self.get(node_id).next
-    }
-
     fn set_next(&mut self, node_id: usize, next: usize) {
         self.get_mut(node_id).next = next;
     }
@@ -188,16 +180,8 @@ impl<T: Adapter> RopeTree<T> {
         self.get(node_id).depth
     }
 
-    fn set_depth(&mut self, node_id: usize, depth: usize) {
-        self.get_mut(node_id).depth = depth;
-    }
-
     fn weight(&self, node_id: usize) -> u64 {
         self.get(node_id).weight
-    }
-
-    fn set_weight(&mut self, node_id: usize, weight: u64) {
-        self.get_mut(node_id).weight = weight;
     }
 
     fn rotate_left(&mut self, node_id: usize) {
@@ -208,8 +192,8 @@ impl<T: Adapter> RopeTree<T> {
         let (left_depth, left_weight) = self.try_map(left_id, |node| {
             (node.depth, node.weight)
         }).unwrap_or((0, 0));
-        let (right_left_id, right_right_id, right_depth, right_len) = self.map(right_id, |node| {
-            (node.left, node.right, node.depth, T::len(&node.data))
+        let (right_left_id, right_right_id) = self.map(right_id, |node| {
+            (node.left, node.right)
         });
         let (right_right_depth, right_right_weight) = self.try_map(right_right_id, |node| {
             (node.depth, node.weight)
@@ -253,8 +237,8 @@ impl<T: Adapter> RopeTree<T> {
         let (right_depth, right_weight) = self.try_map(right_id, |node| {
             (node.depth, node.weight)
         }).unwrap_or((0, 0));
-        let (left_right_id, left_left_id, left_depth, left_len) = self.map(left_id, |node| {
-            (node.right, node.left, node.depth, T::len(&node.data))
+        let (left_right_id, left_left_id) = self.map(left_id, |node| {
+            (node.right, node.left)
         });
         let (left_left_depth, left_left_weight) = self.try_map(left_left_id, |node| {
             (node.depth, node.weight)
@@ -835,8 +819,8 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             }
         } else {
             // both leaves
-            let (next_parent_id, next_left_id, next_right_id, next_prev_id, next_next_id) = self.tree.map(next_id, |node| {
-                (node.parent, node.left, node.right, node.prev, node.next)
+            let (next_parent_id, next_left_id, next_right_id, next_next_id) = self.tree.map(next_id, |node| {
+                (node.parent, node.left, node.right, node.next)
             });
             self.tree.map_mut(node_id, |node| {
                 node.parent = next_parent_id;
@@ -912,7 +896,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
     }
 
     pub fn insert_before(&mut self, node: T::Node) {
-        let mut node_id = self.node;
+        let node_id = self.node;
         if node_id == NULL {
             self.move_prev();
         }
@@ -938,7 +922,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
     }
 
     pub fn insert_after(&mut self, node: T::Node) {
-        let mut node_id = self.node;
+        let node_id = self.node;
         if node_id == NULL {
             self.move_next();
         }
