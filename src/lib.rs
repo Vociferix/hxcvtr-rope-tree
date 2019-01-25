@@ -1,5 +1,40 @@
 use std::ops::{Add, Sub};
 
+/// Trait for adapting RopeTree to its contents.
+///
+/// `Adapter` must be implemented by the user and used as `RopeTree`'s type parameter.
+/// `RopeTree` needs to be able to measure the length of its elements, so this trait
+/// provides `RopeTree` with that functionality. Rather than require that elements
+/// implement a trait, this trait can be implemented on any type, typically an empty
+/// type, and is not instantiated by `RopeTree`.
+///
+/// Along with a function for measuring length, `Adapter` also specifies the element
+/// type and size type. The size type, `SizeType`, allows the type used for length and
+/// offset into the rope to be customized. In most cases, `SizeType` should be `usize`,
+/// but occasionally some other type may be more appropriate. Thus, `Adapter` allows
+/// that to be specified. As an example, Hxcvtr specifies `SizeType` to be `u64`
+/// because it supports data that are larger than can be addressed by `usize` on 32-bit
+/// machines. Additionally, this has the benefit of allowing more exotic use of
+/// `RopeTree` where `SizeType` is some more complex user type, as long as said type
+/// satisfies the `SizeType` type bounds.
+///
+/// # Example
+///
+/// ```
+/// use std::string::String;
+///
+/// struct MyAdapter;
+///
+/// impl Adapter for MyAdapter {
+///     type Node = String;
+///     type SizeType = usize;
+///     fn len(node: &String) -> usize {
+///         node.len()
+///     }
+/// }
+///
+/// type MyRopeTree = RopeTree<MyAdapter>;
+/// ```
 pub trait Adapter {
     type Node;
     type SizeType: Add<Output=Self::SizeType> + Sub<Output=Self::SizeType> + PartialOrd + Default + Copy;
@@ -17,18 +52,52 @@ struct Node<T: Adapter> {
     data: T::Node,
 }
 
+/// A tree for implementing rope-like data structures.
+///
+/// `RopeTree` is an ordered, self balancing binary tree, implemented as an AVL Tree.
+/// Rather than ordering nodes based on some key that implements `PartialOrd`, nodes
+/// can be inserted in arbitrary order, and their order is maintained without a key.
+/// Instead of a key, nodes exist at some offset, like in an array. The tree always
+/// starts at offset 0. If a node with length `len` is at position `pos`, then the
+/// next node, if any, is at position `pos + len`. When new nodes are inserted into
+/// the tree, or a node is removed, the position of each node following has its
+/// position changed.
+///
+/// `RopeTree` requires a type that implements `Adapter` as its type parameter. This
+/// type provides `RopeTree` with the functionality to measure the length of nodes.
+/// See the `Adapter` for more information.
+///
+/// Most access and manipulation of `RopeTree` is done through `Cursor` and
+/// `MutCursor` types. See their documentation for more information.
 pub struct RopeTree<T: Adapter> {
     arena: Vec<Option<Node<T>>>,
     free: Vec<usize>,
     root: usize,
 }
 
+/// A cursor into a tree that provides immutable access and traversal of a `RopeTree`.
+///
+/// `Cursor` only provides read access into the tree. The cursor can be moved back
+/// and forth between nodes. `RopeTree` does not implement any iterators, but `Cursor`
+/// can provide that functionality. Due to access into the tree being immutable,
+/// multiple `Cursor`s can coexist safely.
+///
+/// The `Cursor` may either point to a single node in the tree, or null, meaning that
+/// it does not point to any node.
 pub struct Cursor<'a, T: Adapter> {
     tree: &'a RopeTree<T>,
     pos: T::SizeType,
     node: usize,
 }
 
+/// A cursor into a tree that provides mutable access and traveral of a `RopeTree`.
+///
+/// `MutCursor` provides much of the same functionality as `Cursor`, except that
+/// `MutCursor` also provides functions for mutating the tree. Because of this
+/// mutability, only one `MutCursor` can be instantiated at one time. Along with
+/// providing mutable access to the contents of a node, a `MutCursor` can also be
+/// used to insert nodes before or after the cursor's node and to remove the
+/// cursor's node.
 pub struct MutCursor<'a, T: Adapter> {
     tree: &'a mut RopeTree<T>,
     pos: T::SizeType,
@@ -53,6 +122,7 @@ impl<T: Adapter> Node<T> {
 }
 
 impl<T: Adapter> RopeTree<T> {
+    /// Creates a new empty tree.
     pub fn new() -> Self {
         Self {
             arena: Vec::new(),
@@ -61,6 +131,7 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Creates a new tree with a single node.
     pub fn with_root(root: T::Node) -> Self {
         Self {
             arena: vec![Some(Node::new(NULL, NULL, NULL, root))],
@@ -140,6 +211,7 @@ impl<T: Adapter> RopeTree<T> {
         self.try_map_mut(node_id, f).expect("Access on invalid node")
     }
 
+    /// Returns the total size of the tree; the sum of the lengths of each node.
     pub fn len(&self) -> T::SizeType {
         match self.try_get(self.root) {
             Some(node) => node.weight,
@@ -277,20 +349,24 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Returns true if there are no nodes in the tree, false otherwise.
     pub fn is_empty(&self) -> bool {
         self.root == NULL
     }
 
+    /// Removes all nodes from the tree.
     pub fn clear(&mut self) {
         self.root = NULL;
         self.free.clear();
         self.arena.clear();
     }
 
+    /// Returns a null `Cursor`
     pub fn null_cursor(&self) -> Cursor<T> {
         Cursor::new(self, T::SizeType::default(), NULL)
     }
 
+    /// Returns a null `MutCursor`
     pub fn null_cursor_mut(&mut self) -> MutCursor<T> {
         MutCursor::new(self, T::SizeType::default(), NULL)
     }
@@ -311,11 +387,13 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Returns a `Cursor` that points to the front node, at offset 0.
     pub fn front(&self) -> Cursor<T> {
         let front_id = self.front_impl();
         Cursor::new(self, T::SizeType::default(), front_id)
     }
 
+    /// Returns a `MutCursor` that points to the front node, at offset 0.
     pub fn front_mut(&mut self) -> MutCursor<T> {
         let front_id = self.front_impl();
         MutCursor::new(self, T::SizeType::default(), front_id)
@@ -337,6 +415,7 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Returns a `Cursor` that points to the back node.
     pub fn back<'a>(&'a self) -> Cursor<'a, T> {
         let back_id = self.back_impl();
         self.try_map(back_id, |node| {
@@ -344,6 +423,7 @@ impl<T: Adapter> RopeTree<T> {
         }).unwrap_or(Cursor::new(self, T::SizeType::default(), NULL))
     }
 
+    /// Returns a `MutCursor` that points to the back node.
     pub fn back_mut<'a>(&'a mut self) -> MutCursor<'a, T> {
         let back_id = self.back_impl();
         if back_id == NULL {
@@ -404,11 +484,15 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Returns a `Cursor` to the node with the greatest offset that is less than `pos`.
+    /// The cursor will be null if the tree is empty.
     pub fn upper_bound<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
         let (pos, node_id) = self.upper_bound_impl(pos);
         Cursor::new(self, pos, node_id)
     }
 
+    /// Returns a `MutCursor` to the node with the greatest offset that is less than `pos`.
+    /// The cursor will be null if the tree is empty.
     pub fn upper_bound_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
         let (pos, node_id) = self.upper_bound_impl(pos);
         MutCursor::new(self, pos, node_id)
@@ -432,11 +516,15 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Returns a `Cursor` to the node with the least offset that is greater than `pos`.
+    /// The cursor will be null if there are no nodes with offset less than `pos`.
     pub fn lower_bound<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
         Cursor::new(self, pos, node_id)
     }
 
+    /// Returns a `MutCursor` to the node with the least offset that is greater than `pos`.
+    /// The cursor will be null if there are no nodes with offset less than `pos`.
     pub fn lower_bound_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
         MutCursor::new(self, pos, node_id)
@@ -451,11 +539,21 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Finds the node that covers the offset `pos`. Unlike `upper_bound`, the returned
+    /// cursor will be null if `pos` is greater than or equal to the total tree length.
+    /// A `Cursor` and an offset into the node is returned. The offset into the node is
+    /// the offset from the start of the node that is equivalent to `pos`. If the cursor
+    /// is null, the offset will always be 0, and is essentially meaningless.
     pub fn find<'a>(&'a self, pos: T::SizeType) -> (Cursor<'a, T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
         (Cursor::new(self, start, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
     }
 
+    /// Finds the node that covers the offset `pos`. Unlike `upper_bound_mut`, the returned
+    /// cursor will be null if `pos` is greater than or equal to the total tree length.
+    /// A `MutCursor` and an offset into the node is returned. The offset into the node is
+    /// the offset from the start of the node that is equivalent to `pos`. If the cursor
+    /// is null, the offset will always be 0, and is essentially meaningless.
     pub fn find_mut<'a>(&'a mut self, pos: T::SizeType) -> (MutCursor<'a, T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
         (MutCursor::new(self, pos, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
@@ -531,7 +629,13 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    // Unsafe code is used here to more efficiently swap data elements. Multiple
+    // mutable into the same tree temporarily exist simultaneously in order to
+    // pass them into `std::mem::swap`. If `a_id != b_id` memory safety is
+    // guaranteed. The assert, which should never be violated, guarantees that
+    // `a_id != b_id`.
     fn data_swap(&mut self, a_id: usize, b_id: usize) {
+        assert_ne!(a_id, b_id);
         let a_ptr = (&mut self.get_mut(a_id).data) as *mut T::Node;
         unsafe { std::mem::swap(&mut self.get_mut(b_id).data, &mut *a_ptr) };
     }
@@ -556,14 +660,18 @@ impl<'a, T: Adapter> Cursor<'a, T> {
         }
     }
 
+    /// Returns an immutable reference to the tree the cursor points into.
     pub fn tree(&self) -> &RopeTree<T> {
         self.tree
     }
 
+    /// Returns true if the cursor is null, false otherwise.
     pub fn is_null(&self) -> bool {
         self.node == NULL
     }
 
+    /// Returns the start offset of the node the cursor points to. `None`
+    /// if the cursor is null.
     pub fn position(&self) -> Option<T::SizeType> {
         if self.node == NULL {
             None
@@ -572,6 +680,8 @@ impl<'a, T: Adapter> Cursor<'a, T> {
         }
     }
 
+    /// Returns the length of the node the cursor points to. `None` if the
+    /// cursor is null.
     pub fn len(&self) -> Option<T::SizeType> {
         if self.node == NULL {
             None
@@ -580,10 +690,15 @@ impl<'a, T: Adapter> Cursor<'a, T> {
         }
     }
 
+    /// Returns an immutable reference to the node element of the node the
+    /// cursor points to. `None` if the cursor is null.
     pub fn get(&self) -> Option<&T::Node> {
         self.tree.try_get(self.node).map(|node| &node.data)
     }
 
+    /// Moves the cursor to the next node in the tree. If the cursor is on
+    /// the back node, the cursor will become null. If the cursor is null,
+    /// the cursor will move to the front node.
     pub fn move_next(&mut self) {
         let node_id = self.node;
         if node_id == NULL {
@@ -598,6 +713,9 @@ impl<'a, T: Adapter> Cursor<'a, T> {
         }
     }
 
+    /// Move the cursor to the previous node in the tree. If the cursor is
+    /// on the front node, the cursor will become null. If the cursor is
+    /// null, the cursor will move to the back node.
     pub fn move_prev(&mut self) {
         let node_id = self.node;
         if node_id == NULL {
@@ -621,12 +739,19 @@ impl<'a, T: Adapter> Cursor<'a, T> {
         }
     }
 
+    /// Returns a new cursor to the next node in the tree. If the self
+    /// cursor is on the back node, the new cursor will be null. If the
+    /// self cursor is null, the new cursor will be on the front node.
     pub fn peek_next(&self) -> Self {
         let mut ret = self.clone();
         ret.move_next();
         ret
     }
 
+    /// Returns a new cursor to the previous node in the tree. If the
+    /// self cursor is on the front node, the new cursor will be null.
+    /// If the self cursor is null, the new cursor will be on the back
+    /// node.
     pub fn peek_prev(&self) -> Self {
         let mut ret = self.clone();
         ret.move_prev();
@@ -643,18 +768,18 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
     }
 
+    /// Returns an immutable reference to the tree the cursor points into.
     pub fn tree(&self) -> &RopeTree<T> {
         self.tree
     }
 
-    pub fn tree_mut(&mut self) -> &mut RopeTree<T> {
-        self.tree
-    }
-
+    /// Returns true if the cursor is null, false otherwise.
     pub fn is_null(&self) -> bool {
         self.node == NULL
     }
 
+    /// Returns the start offset of the node the cursor points to. `None`
+    /// if the cursor is null.
     pub fn position(&self) -> Option<T::SizeType> {
         if self.node == NULL {
             None
@@ -663,6 +788,8 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
     }
 
+    /// Returns the length of the node the cursor points to. `None` if the
+    /// cursor is null.
     pub fn len(&self) -> Option<T::SizeType> {
         if self.node == NULL {
             None
@@ -671,10 +798,15 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
     }
 
+    /// Returns an immutable reference to the node element of the node the
+    /// cursor points to. `None` if the cursor is null.
     pub fn get(&self) -> Option<&T::Node> {
         self.tree.try_get(self.node).map(|node| &node.data)
     }
 
+    /// Provides mutable access to node data via a closure. Mutable access
+    /// must be done through a closure so that the tree can be repaired if
+    /// the length of the node is changed.
     pub fn mutate<F: Fn(&mut T::Node)>(&mut self, f: F) {
         let node_id = self.node;
         if node_id != NULL {
@@ -689,10 +821,14 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
     }
 
+    /// Returns a `Cursor` whose lifetime is tied to the `MutCursor`.
     pub fn as_cursor(&'a self) -> Cursor<'a, T> {
         Cursor::new(self.tree, self.pos, self.node)
     }
 
+    /// Moves the cursor to the next node in the tree. If the cursor is on
+    /// the back node, the cursor will become null. If the cursor is null,
+    /// the cursor will move to the front node.
     pub fn move_next(&mut self) {
         let node_id = self.node;
         if node_id == NULL {
@@ -707,6 +843,9 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
     }
 
+    /// Move the cursor to the previous node in the tree. If the cursor is
+    /// on the front node, the cursor will become null. If the cursor is
+    /// null, the cursor will move to the back node.
     pub fn move_prev(&mut self) {
         let node_id = self.node;
         if node_id == NULL {
@@ -730,18 +869,29 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
     }
 
+    /// Returns a new cursor to the next node in the tree. If the self
+    /// cursor is on the back node, the new cursor will be null. If the
+    /// self cursor is null, the new cursor will be on the front node.
     pub fn peek_next(&'a self) -> Cursor<'a, T> {
         let mut ret = self.as_cursor();
         ret.move_next();
         ret
     }
 
+    /// Returns a new cursor to the previous node in the tree. If the
+    /// self cursor is on the front node, the new cursor will be null.
+    /// If the self cursor is null, the new cursor will be on the back
+    /// node.
     pub fn peek_prev(&'a self) -> Cursor<'a, T> {
         let mut ret = self.as_cursor();
         ret.move_prev();
         ret
     }
 
+    /// Removes the node the cursor points to from the tree. The cursor
+    /// will move to the next node in the tree. If the cursor is null,
+    /// the tree is unchanged and `None` is returned. If the cursor is
+    /// is on the back node, the cursor will be null after removal.
     pub fn remove(&mut self) -> Option<T::Node> {
         if self.node == NULL {
             return None;
@@ -839,6 +989,8 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         Some(self.tree.dealloc(node_id).data)
     }
 
+    /// Replaces the data of the node the cursor points to. The old
+    /// data is returned. If the cursor is null, `None` is returned.
     pub fn replace_with(&mut self, node: T::Node) -> Option<T::Node> {
         let ret = match self.tree.try_get_mut(self.node) {
             Some(n) => Some(std::mem::replace(&mut n.data, node)),
@@ -850,6 +1002,9 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         ret
     }
 
+    /// Insert a node before the node the cursor points to. The cursor
+    /// position is unchanged. If the cursor is null, the new node is
+    /// inserted at the back of the tree.
     pub fn insert_before(&mut self, node: T::Node) {
         let node_id = self.node;
         if node_id == NULL {
@@ -876,6 +1031,9 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         self.pos = self.pos + len;
     }
 
+    /// Insert a node after the node the cursor points to. The cursor
+    /// position is unchanged. If the cursor is null, the new node is
+    /// inserted at the front of the tree.
     pub fn insert_after(&mut self, node: T::Node) {
         let node_id = self.node;
         if node_id == NULL {
@@ -907,7 +1065,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
 mod tests {
     use super::*;
 
-    struct TestAdapter { }
+    struct TestAdapter;
 
     impl Adapter for TestAdapter {
         type Node = u64;
