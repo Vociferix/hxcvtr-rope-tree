@@ -21,6 +21,8 @@ use std::ops::{Add, Sub};
 /// # Example
 ///
 /// ```
+/// extern crate hxcvtr_rope_tree;
+/// use hxcvtr_rope_tree::{RopeTree, Adapter};
 /// use std::string::String;
 ///
 /// struct MyAdapter;
@@ -69,6 +71,57 @@ struct Node<T: Adapter> {
 ///
 /// Most access and manipulation of `RopeTree` is done through `Cursor` and
 /// `MutCursor` types. See their documentation for more information.
+///
+/// # Example
+///
+/// ```
+/// extern crate hxcvtr_rope_tree;
+/// use hxcvtr_rope_tree::{RopeTree, Adapter};
+/// use std::string::String;
+///
+/// struct MyAdapter;
+///
+/// impl Adapter for MyAdapter {
+///     type Node = String;
+///     type SizeType = usize;
+///     fn len(node: &String) -> usize {
+///         node.len()
+///     }
+/// }
+///
+/// type MyRopeTree = RopeTree<MyAdapter>;
+///
+/// fn main() {
+///     let mut tree: MyRopeTree = RopeTree::with_root(String::from("I am a "));
+///     tree.front_mut().insert_after(String::from("Rustacean!"));
+///
+///     {
+///         let string = String::new();
+///         let cursor = tree.front();
+///
+///         while !cursor.is_null() {
+///             string.push_str(cursor.get().unwrap());
+///             cursor.move_next();
+///         }
+///
+///         assert_eq!(string.as_str(), "I am a Rustacean!");
+///     }
+///
+///     tree.front_mut().insert_after(String::from("proud "));
+///
+///     {
+///         let string = String::new();
+///         let cursor = tree.front();
+///
+///         while !cursor.is_null() {
+///             string.push_str(cursor.get().unwrap());
+///             cursor.move_next();
+///         }
+///
+///         assert_eq!(string.as_str(), "I am a proud Rustacean!");
+///     }
+/// }
+/// ```
 pub struct RopeTree<T: Adapter> {
     arena: Vec<Option<Node<T>>>,
     free: Vec<usize>,
