@@ -527,6 +527,11 @@ impl<T: Adapter> RopeTree<T> {
             node_id = parent_id;
         }
     }
+
+    fn data_swap(&mut self, a_id: usize, b_id: usize) {
+        let a_ptr = (&mut self.get_mut(a_id).data) as *mut T::Node;
+        unsafe { std::mem::swap(&mut self.get_mut(b_id).data, &mut *a_ptr) };
+    }
 }
 
 impl<'a, T: Adapter> Clone for Cursor<'a, T> {
@@ -793,6 +798,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
                 self.tree.set_parent(right_id, parent_id);
                 if res.is_none() {
                     self.tree.root = right_id;
+                } else {
                     self.tree.repair(parent_id);
                 }
             }
@@ -815,70 +821,16 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             self.tree.set_parent(left_id, parent_id);
             if res.is_none() {
                 self.tree.root = right_id;
+            } else {
                 self.tree.repair(parent_id);
             }
         } else {
             // both leaves
-            let (next_parent_id, next_left_id, next_right_id, next_next_id) = self.tree.map(next_id, |node| {
-                (node.parent, node.left, node.right, node.next)
-            });
-            self.tree.map_mut(node_id, |node| {
-                node.parent = next_parent_id;
-                node.left = next_left_id;
-                node.right = next_right_id;
-                node.prev = next_id;
-                node.next = next_next_id;
-            });
-            self.tree.map_mut(next_id, |node| {
-                node.parent = parent_id;
-                node.left = left_id;
-                node.right = right_id;
-                node.prev = prev_id;
-                node.next = node_id;
-            });
-            if parent_id == NULL {
-                self.tree.root = next_id;
-            } else {
-                self.tree.map_mut(parent_id, |node| {
-                    let left_id = node.left;
-                    if left_id == node_id {
-                        node.left = next_id;
-                    } else {
-                        node.right = next_id;
-                    }
-                });
-            }
-            if next_parent_id == NULL {
-                self.tree.root = node_id;
-            } else {
-                self.tree.map_mut(next_parent_id, |node| {
-                    let left_id = node.left;
-                    if left_id == next_id {
-                        node.left = node_id;
-                    } else {
-                        node.right = node_id;
-                    }
-                });
-            }
-            if left_id != NULL {
-                self.tree.set_parent(left_id, next_id);
-            }
-            if next_left_id != NULL {
-                self.tree.set_parent(next_left_id, node_id);
-            }
-            if right_id != NULL {
-                self.tree.set_parent(right_id, next_id);
-            }
-            if next_right_id != NULL {
-                self.tree.set_parent(next_right_id, node_id);
-            }
-            if prev_id != NULL {
-                self.tree.set_next(prev_id, next_id);
-            }
-            if next_next_id != NULL {
-                self.tree.set_prev(next_next_id, node_id);
-            }
-            return self.remove();
+            self.tree.data_swap(node_id, prev_id);
+            self.node = prev_id;
+            let ret = self.remove();
+            self.node = next_id;
+            return ret;
         }
         self.node = next_id;
         Some(self.tree.dealloc(node_id).data)
@@ -963,6 +915,7 @@ mod tests {
 
     type TestTree = RopeTree<TestAdapter>;
 
+    /*
     fn print_tree_impl(tree: &TestTree, node_id: usize, depth: usize) {
         if node_id != NULL {
             print_tree_impl(tree, tree.right(node_id), depth + 1);
@@ -976,11 +929,13 @@ mod tests {
         }
     }
 
+
     fn print_tree(tree: &TestTree) {
         println!("--------------------------------------------------------------------------------");
         print_tree_impl(tree, tree.root, 0);
         println!("--------------------------------------------------------------------------------");
     }
+    */
 
     fn new_test_tree() -> TestTree {
         let mut tree: TestTree = RopeTree::with_root(10);
@@ -1010,14 +965,12 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 10);
             assert_eq!(*cursor.get().unwrap(), 10);
             assert_eq!(cursor.tree().len(), 10);
-            print_tree(cursor.tree());
 
             cursor.insert_after(20);
             assert_eq!(cursor.position().unwrap(), 0);
             assert_eq!(cursor.len().unwrap(), 10);
             assert_eq!(*cursor.get().unwrap(), 10);
             assert_eq!(cursor.tree().len(), 30);
-            print_tree(cursor.tree());
 
             cursor.move_next();
             assert_eq!(cursor.position().unwrap(), 10);
@@ -1030,7 +983,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 20);
             assert_eq!(*cursor.get().unwrap(), 20);
             assert_eq!(cursor.tree().len(), 60);
-            print_tree(cursor.tree());
 
             cursor.move_prev();
             assert_eq!(cursor.position().unwrap(), 10);
@@ -1043,7 +995,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 30);
             assert_eq!(*cursor.get().unwrap(), 30);
             assert_eq!(cursor.tree().len(), 85);
-            print_tree(cursor.tree());
 
             cursor.move_next();
             assert_eq!(cursor.position().unwrap(), 40);
@@ -1056,7 +1007,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 25);
             assert_eq!(*cursor.get().unwrap(), 25);
             assert_eq!(cursor.tree().len(), 100);
-            print_tree(cursor.tree());
 
             cursor.move_prev();
             assert_eq!(cursor.position().unwrap(), 40);
@@ -1075,7 +1025,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 30);
             assert_eq!(*cursor.get().unwrap(), 30);
             assert_eq!(cursor.tree().len(), 135);
-            print_tree(cursor.tree());
 
             cursor.move_next();
             assert_eq!(cursor.position().unwrap(), 40);
@@ -1094,7 +1043,6 @@ mod tests {
             assert_eq!(cursor.len().unwrap(), 30);
             assert_eq!(*cursor.get().unwrap(), 30);
             assert_eq!(cursor.tree().len(), 175);
-            print_tree(cursor.tree());
 
             cursor.move_prev();
             assert_eq!(cursor.position().unwrap(), 10);
@@ -1179,7 +1127,7 @@ mod tests {
     }
 
     #[test]
-    fn lower_bound_test() {
+    fn lower_bound_test_1() {
         let tree = new_test_tree();
         {
             let cursor = tree.lower_bound(60);
@@ -1187,30 +1135,55 @@ mod tests {
             assert_eq!(cursor.position().unwrap(), 80);
             assert_eq!(cursor.len().unwrap(), 35);
         }
+    }
+
+    #[test]
+    fn lower_bound_test_2() {
+        let tree = new_test_tree();
         {
             let cursor = tree.lower_bound(80);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 80);
             assert_eq!(cursor.len().unwrap(), 35);
         }
+    }
+
+    #[test]
+    fn lower_bound_test_3() {
+        let tree = new_test_tree();
         {
             let cursor = tree.lower_bound(81);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 115);
             assert_eq!(cursor.len().unwrap(), 15);
         }
+    }
+
+    #[test]
+    fn lower_bound_test_4() {
+        let tree = new_test_tree();
         {
             let cursor = tree.lower_bound(0);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 0);
             assert_eq!(cursor.len().unwrap(), 10);
         }
+    }
+
+    #[test]
+    fn lower_bound_test_5() {
+        let tree = new_test_tree();
         {
             let cursor = tree.lower_bound(155);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 155);
             assert_eq!(cursor.len().unwrap(), 20);
         }
+    }
+
+    #[test]
+    fn lower_bound_test_6() {
+        let tree = new_test_tree();
         {
             let cursor = tree.lower_bound(156);
             assert!(cursor.is_null());
@@ -1220,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn upper_bound_test() {
+    fn upper_bound_test_1() {
         let tree = new_test_tree();
         {
             let cursor = tree.upper_bound(85);
@@ -1228,29 +1201,142 @@ mod tests {
             assert_eq!(cursor.position().unwrap(), 80);
             assert_eq!(cursor.len().unwrap(), 35);
         }
+    }
+
+    #[test]
+    fn upper_bound_test_2() {
+        let tree = new_test_tree();
         {
             let cursor = tree.upper_bound(80);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 80);
             assert_eq!(cursor.len().unwrap(), 35);
         }
+    }
+
+    #[test]
+    fn upper_bound_test_3() {
+        let tree = new_test_tree();
         {
             let cursor = tree.upper_bound(79);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 50);
             assert_eq!(cursor.len().unwrap(), 30);
         }
+    }
+
+    #[test]
+    fn upper_bound_test_4() {
+        let tree = new_test_tree();
         {
             let cursor = tree.upper_bound(0);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 0);
             assert_eq!(cursor.len().unwrap(), 10);
         }
+    }
+
+    #[test]
+    fn upper_bound_test_5() {
+        let tree = new_test_tree();
         {
             let cursor = tree.upper_bound(200);
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 155);
             assert_eq!(cursor.len().unwrap(), 20);
         }
+    }
+
+    #[test]
+    fn remove_test_1() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(0);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 10);
+        assert_eq!(cursor.tree().len(), 165);
+        assert_eq!(cursor.position().unwrap(), 0);
+        assert_eq!(cursor.len().unwrap(), 40);
+    }
+
+    #[test]
+    fn remove_test_2() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(10);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 40);
+        assert_eq!(cursor.tree().len(), 135);
+        assert_eq!(cursor.position().unwrap(), 10);
+        assert_eq!(cursor.len().unwrap(), 30);
+    }
+
+    #[test]
+    fn remove_test_3() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(50);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 30);
+        assert_eq!(cursor.tree().len(), 145);
+        assert_eq!(cursor.position().unwrap(), 50);
+        assert_eq!(cursor.len().unwrap(), 35);
+    }
+
+    #[test]
+    fn remove_test_4() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(80);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 35);
+        assert_eq!(cursor.tree().len(), 140);
+        assert_eq!(cursor.position().unwrap(), 80);
+        assert_eq!(cursor.len().unwrap(), 15);
+    }
+
+    #[test]
+    fn remove_test_5() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(115);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 15);
+        assert_eq!(cursor.tree().len(), 160);
+        assert_eq!(cursor.position().unwrap(), 115);
+        assert_eq!(cursor.len().unwrap(), 25);
+    }
+
+    #[test]
+    fn remove_test_6() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(130);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 25);
+        assert_eq!(cursor.tree().len(), 150);
+        assert_eq!(cursor.position().unwrap(), 130);
+        assert_eq!(cursor.len().unwrap(), 20);
+    }
+
+    #[test]
+    fn remove_test_7() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.upper_bound_mut(155);
+        let node = cursor.remove();
+        assert!(node.is_some());
+        assert_eq!(node.unwrap(), 20);
+        assert_eq!(cursor.tree().len(), 155);
+        assert!(cursor.is_null());
+        assert!(cursor.position().is_none());
+        assert!(cursor.len().is_none());
+        assert!(cursor.get().is_none());
+    }
+
+    #[test]
+    fn remove_test_8() {
+        let mut tree = new_test_tree();
+        let mut cursor = tree.null_cursor_mut();
+        assert!(cursor.remove().is_none());
     }
 }
