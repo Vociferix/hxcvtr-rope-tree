@@ -451,14 +451,14 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
-    pub fn find<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
-        let (pos, node_id) = self.find_impl(pos);
-        Cursor::new(self, pos, node_id)
+    pub fn find<'a>(&'a self, pos: T::SizeType) -> (Cursor<'a, T>, T::SizeType) {
+        let (start, node_id) = self.find_impl(pos);
+        (Cursor::new(self, start, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
     }
 
-    pub fn find_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
-        let (pos, node_id) = self.find_impl(pos);
-        MutCursor::new(self, pos, node_id)
+    pub fn find_mut<'a>(&'a mut self, pos: T::SizeType) -> (MutCursor<'a, T>, T::SizeType) {
+        let (start, node_id) = self.find_impl(pos);
+        (MutCursor::new(self, pos, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
     }
 
     fn repair_weight_only(&mut self, mut node_id: usize) {
@@ -1248,6 +1248,76 @@ mod tests {
             assert!(!cursor.is_null());
             assert_eq!(cursor.position().unwrap(), 155);
             assert_eq!(cursor.len().unwrap(), 20);
+        }
+    }
+
+    #[test]
+    fn find_test_1() {
+        let tree = new_test_tree();
+        {
+            let (cursor, offset) = tree.find(85);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+            assert_eq!(offset, 5);
+        }
+    }
+
+    #[test]
+    fn find_test_2() {
+        let tree = new_test_tree();
+        {
+            let (cursor, offset) = tree.find(80);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 80);
+            assert_eq!(cursor.len().unwrap(), 35);
+            assert_eq!(offset, 0);
+        }
+    }
+
+    #[test]
+    fn find_test_3() {
+        let tree = new_test_tree();
+        {
+            let (cursor, offset) = tree.find(79);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 50);
+            assert_eq!(cursor.len().unwrap(), 30);
+            assert_eq!(offset, 29);
+        }
+    }
+
+    #[test]
+    fn find_test_4() {
+        let tree = new_test_tree();
+        {
+            let (cursor, offset) = tree.find(0);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 0);
+            assert_eq!(cursor.len().unwrap(), 10);
+            assert_eq!(offset, 0);
+        }
+    }
+
+    #[test]
+    fn find_test_5() {
+        let tree = new_test_tree();
+        {
+            let (cursor, offset) = tree.find(174);
+            assert!(!cursor.is_null());
+            assert_eq!(cursor.position().unwrap(), 155);
+            assert_eq!(cursor.len().unwrap(), 20);
+            assert_eq!(offset, 19);
+        }
+    }
+
+    #[test]
+    fn find_test_6() {
+        let tree = new_test_tree();
+        {
+            let (cursor, offset) = tree.find(175);
+            assert!(cursor.is_null());
+            assert_eq!(offset, 0);
         }
     }
 
