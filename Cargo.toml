@@ -2,6 +2,6 @@
 name = "hxcvtr-rope-tree"
 version = "0.1.0"
 authors = ["Jack Bernard <jack.a.bernard.jr@gmail.com>"]
-edition = "2019"
+edition = "2018"
 
 [dependencies]
