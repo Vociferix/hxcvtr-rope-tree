@@ -96,8 +96,8 @@ struct Node<T: Adapter> {
 ///     tree.front_mut().insert_after(String::from("Rustacean!"));
 ///
 ///     {
-///         let string = String::new();
-///         let cursor = tree.front();
+///         let mut string = String::new();
+///         let mut cursor = tree.front();
 ///
 ///         while !cursor.is_null() {
 ///             string.push_str(cursor.get().unwrap());
@@ -110,8 +110,8 @@ struct Node<T: Adapter> {
 ///     tree.front_mut().insert_after(String::from("proud "));
 ///
 ///     {
-///         let string = String::new();
-///         let cursor = tree.front();
+///         let mut string = String::new();
+///         let mut cursor = tree.front();
 ///
 ///         while !cursor.is_null() {
 ///             string.push_str(cursor.get().unwrap());
@@ -270,6 +270,10 @@ impl<T: Adapter> RopeTree<T> {
             Some(node) => node.weight,
             None => T::SizeType::default(),
         }
+    }
+
+    fn parent(&self, node_id: usize) -> usize {
+        self.get(node_id).parent
     }
 
     fn set_parent(&mut self, node_id: usize, parent: usize) {
@@ -691,6 +695,56 @@ impl<T: Adapter> RopeTree<T> {
         assert_ne!(a_id, b_id);
         let a_ptr = (&mut self.get_mut(a_id).data) as *mut T::Node;
         unsafe { std::mem::swap(&mut self.get_mut(b_id).data, &mut *a_ptr) };
+    }
+
+    pub fn push_front(&mut self, node: T::Node) {
+        let front_id = self.front_impl();
+        let node_id = self.alloc(Node::new(front_id, NULL, front_id, node));
+        if front_id == NULL {
+            self.root = node_id;
+        } else {
+            self.set_left(front_id, node_id);
+            self.repair(front_id);
+        }
+    }
+
+    pub fn push_back(&mut self, node: T::Node) {
+        let back_id = self.back_impl();
+        let node_id = self.alloc(Node::new(back_id, back_id, NULL, node));
+        if back_id == NULL {
+            self.root = node_id;
+        } else {
+            self.set_right(back_id, node_id);
+            self.repair(back_id);
+        }
+    }
+
+    pub fn pop_front(&mut self) -> Option<T::Node> {
+        let front_id = self.front_impl();
+        if front_id == NULL {
+            None
+        } else {
+            let parent_id = self.parent(front_id);
+            self.try_map_mut(parent_id, |node| {
+                node.left = NULL;
+            });
+            self.repair(parent_id);
+            Some(self.dealloc(front_id).data)
+        }
+    }
+
+    pub fn pop_back(&mut self) -> Option<T::Node> {
+        let back_id = self.back_impl();
+        if back_id == NULL {
+            None
+        } else {
+            let parent_id = self.parent(back_id);
+            self.try_map_mut(parent_id, |node| {
+                node.right = NULL;
+            });
+            self.repair(parent_id);
+            Some(self.dealloc(back_id).data)
+        }
     }
 }
 
