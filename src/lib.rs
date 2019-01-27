@@ -1,3 +1,9 @@
+mod cursor;
+mod mut_cursor;
+
+pub use cursor::Cursor;
+pub use mut_cursor::MutCursor;
+
 use std::ops::{Add, Sub};
 
 /// Trait for adapting RopeTree to its contents.
@@ -41,17 +47,6 @@ pub trait Adapter {
     type Node;
     type SizeType: Add<Output=Self::SizeType> + Sub<Output=Self::SizeType> + PartialOrd + Default + Copy;
     fn len(node: &Self::Node) -> Self::SizeType;
-}
-
-struct Node<T: Adapter> {
-    parent: usize,
-    left: usize,
-    right: usize,
-    prev: usize,
-    next: usize,
-    depth: usize,
-    weight: T::SizeType,
-    data: T::Node,
 }
 
 /// A tree for implementing rope-like data structures.
@@ -128,33 +123,15 @@ pub struct RopeTree<T: Adapter> {
     root: usize,
 }
 
-/// A cursor into a tree that provides immutable access and traversal of a `RopeTree`.
-///
-/// `Cursor` only provides read access into the tree. The cursor can be moved back
-/// and forth between nodes. `RopeTree` does not implement any iterators, but `Cursor`
-/// can provide that functionality. Due to access into the tree being immutable,
-/// multiple `Cursor`s can coexist safely.
-///
-/// The `Cursor` may either point to a single node in the tree, or null, meaning that
-/// it does not point to any node.
-pub struct Cursor<'a, T: Adapter> {
-    tree: &'a RopeTree<T>,
-    pos: T::SizeType,
-    node: usize,
-}
-
-/// A cursor into a tree that provides mutable access and traveral of a `RopeTree`.
-///
-/// `MutCursor` provides much of the same functionality as `Cursor`, except that
-/// `MutCursor` also provides functions for mutating the tree. Because of this
-/// mutability, only one `MutCursor` can be instantiated at one time. Along with
-/// providing mutable access to the contents of a node, a `MutCursor` can also be
-/// used to insert nodes before or after the cursor's node and to remove the
-/// cursor's node.
-pub struct MutCursor<'a, T: Adapter> {
-    tree: &'a mut RopeTree<T>,
-    pos: T::SizeType,
-    node: usize,
+struct Node<T: Adapter> {
+    parent: usize,
+    left: usize,
+    right: usize,
+    prev: usize,
+    next: usize,
+    depth: usize,
+    weight: T::SizeType,
+    data: T::Node,
 }
 
 const NULL: usize = std::usize::MAX;
@@ -420,12 +397,12 @@ impl<T: Adapter> RopeTree<T> {
 
     /// Returns a null `Cursor`
     pub fn null_cursor(&self) -> Cursor<T> {
-        Cursor::new(self, T::SizeType::default(), NULL)
+        cursor::new(self, T::SizeType::default(), NULL)
     }
 
     /// Returns a null `MutCursor`
     pub fn null_cursor_mut(&mut self) -> MutCursor<T> {
-        MutCursor::new(self, T::SizeType::default(), NULL)
+        mut_cursor::new(self, T::SizeType::default(), NULL)
     }
 
     fn front_impl(&self) -> usize {
@@ -447,13 +424,13 @@ impl<T: Adapter> RopeTree<T> {
     /// Returns a `Cursor` that points to the front node, at offset 0.
     pub fn front(&self) -> Cursor<T> {
         let front_id = self.front_impl();
-        Cursor::new(self, T::SizeType::default(), front_id)
+        cursor::new(self, T::SizeType::default(), front_id)
     }
 
     /// Returns a `MutCursor` that points to the front node, at offset 0.
     pub fn front_mut(&mut self) -> MutCursor<T> {
         let front_id = self.front_impl();
-        MutCursor::new(self, T::SizeType::default(), front_id)
+        mut_cursor::new(self, T::SizeType::default(), front_id)
     }
 
     fn back_impl(&self) -> usize {
@@ -476,20 +453,20 @@ impl<T: Adapter> RopeTree<T> {
     pub fn back<'a>(&'a self) -> Cursor<'a, T> {
         let back_id = self.back_impl();
         self.try_map(back_id, |node| {
-            Cursor::new(self, self.len() - T::len(&node.data), back_id)
-        }).unwrap_or(Cursor::new(self, T::SizeType::default(), NULL))
+            cursor::new(self, self.len() - T::len(&node.data), back_id)
+        }).unwrap_or(cursor::new(self, T::SizeType::default(), NULL))
     }
 
     /// Returns a `MutCursor` that points to the back node.
     pub fn back_mut<'a>(&'a mut self) -> MutCursor<'a, T> {
         let back_id = self.back_impl();
         if back_id == NULL {
-            MutCursor::new(self, T::SizeType::default(), NULL)
+            mut_cursor::new(self, T::SizeType::default(), NULL)
         } else {
             let back_len = self.map_mut(back_id, |node| {
                 T::len(&node.data)
             });
-            MutCursor::new(self, self.len() - back_len, back_id)
+            mut_cursor::new(self, self.len() - back_len, back_id)
         }
     }
 
@@ -545,14 +522,14 @@ impl<T: Adapter> RopeTree<T> {
     /// The cursor will be null if the tree is empty.
     pub fn upper_bound<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
         let (pos, node_id) = self.upper_bound_impl(pos);
-        Cursor::new(self, pos, node_id)
+        cursor::new(self, pos, node_id)
     }
 
     /// Returns a `MutCursor` to the node with the greatest offset that is less than `pos`.
     /// The cursor will be null if the tree is empty.
     pub fn upper_bound_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
         let (pos, node_id) = self.upper_bound_impl(pos);
-        MutCursor::new(self, pos, node_id)
+        mut_cursor::new(self, pos, node_id)
     }
 
     fn lower_bound_impl(&self, pos: T::SizeType) -> (T::SizeType, usize) {
@@ -577,14 +554,14 @@ impl<T: Adapter> RopeTree<T> {
     /// The cursor will be null if there are no nodes with offset less than `pos`.
     pub fn lower_bound<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
-        Cursor::new(self, pos, node_id)
+        cursor::new(self, pos, node_id)
     }
 
     /// Returns a `MutCursor` to the node with the least offset that is greater than `pos`.
     /// The cursor will be null if there are no nodes with offset less than `pos`.
     pub fn lower_bound_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
-        MutCursor::new(self, pos, node_id)
+        mut_cursor::new(self, pos, node_id)
     }
 
     fn find_impl(&self, pos: T::SizeType) -> (T::SizeType, usize) {
@@ -603,7 +580,7 @@ impl<T: Adapter> RopeTree<T> {
     /// is null, the offset will always be 0, and is essentially meaningless.
     pub fn find<'a>(&'a self, pos: T::SizeType) -> (Cursor<'a, T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
-        (Cursor::new(self, start, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
+        (cursor::new(self, start, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
     }
 
     /// Finds the node that covers the offset `pos`. Unlike `upper_bound_mut`, the returned
@@ -613,7 +590,7 @@ impl<T: Adapter> RopeTree<T> {
     /// is null, the offset will always be 0, and is essentially meaningless.
     pub fn find_mut<'a>(&'a mut self, pos: T::SizeType) -> (MutCursor<'a, T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
-        (MutCursor::new(self, pos, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
+        (mut_cursor::new(self, pos, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
     }
 
     fn repair_weight_only(&mut self, mut node_id: usize) {
@@ -748,934 +725,5 @@ impl<T: Adapter> RopeTree<T> {
     }
 }
 
-impl<'a, T: Adapter> Clone for Cursor<'a, T> {
-    fn clone(&self) -> Self {
-        Self {
-            tree: self.tree,
-            pos: self.pos,
-            node: self.node,
-        }
-    }
-}
-
-impl<'a, T: Adapter> Cursor<'a, T> {
-    fn new(tree: &'a RopeTree<T>, pos: T::SizeType, node: usize) -> Self {
-        Self {
-            tree,
-            pos,
-            node,
-        }
-    }
-
-    /// Returns an immutable reference to the tree the cursor points into.
-    pub fn tree(&self) -> &RopeTree<T> {
-        self.tree
-    }
-
-    /// Returns true if the cursor is null, false otherwise.
-    pub fn is_null(&self) -> bool {
-        self.node == NULL
-    }
-
-    /// Returns the start offset of the node the cursor points to. `None`
-    /// if the cursor is null.
-    pub fn position(&self) -> Option<T::SizeType> {
-        if self.node == NULL {
-            None
-        } else {
-            Some(self.pos)
-        }
-    }
-
-    /// Returns the length of the node the cursor points to. `None` if the
-    /// cursor is null.
-    pub fn len(&self) -> Option<T::SizeType> {
-        if self.node == NULL {
-            None
-        } else {
-            Some(T::len(&self.tree.get(self.node).data))
-        }
-    }
-
-    /// Returns an immutable reference to the node element of the node the
-    /// cursor points to. `None` if the cursor is null.
-    pub fn get(&self) -> Option<&T::Node> {
-        self.tree.try_get(self.node).map(|node| &node.data)
-    }
-
-    /// Moves the cursor to the next node in the tree. If the cursor is on
-    /// the back node, the cursor will become null. If the cursor is null,
-    /// the cursor will move to the front node.
-    pub fn move_next(&mut self) {
-        let node_id = self.node;
-        if node_id == NULL {
-            self.pos = T::SizeType::default();
-            self.node = self.tree.front_impl();
-        } else {
-            let (next, len) = self.tree.map(self.node, |node| {
-                (node.next, T::len(&node.data))
-            });
-            self.pos = self.pos + len;
-            self.node = next;
-        }
-    }
-
-    /// Move the cursor to the previous node in the tree. If the cursor is
-    /// on the front node, the cursor will become null. If the cursor is
-    /// null, the cursor will move to the back node.
-    pub fn move_prev(&mut self) {
-        let node_id = self.node;
-        if node_id == NULL {
-            let root = self.tree.root;
-            if root == NULL {
-                self.pos = T::SizeType::default();
-                self.node = NULL;
-            } else {
-                let back_id = self.tree.back_impl();
-                self.pos = self.tree.weight(root) - self.tree.map(back_id, |node| T::len(&node.data));
-                self.node = back_id;
-            }
-        } else {
-            let prev_id = self.tree.prev(node_id);
-            if prev_id == NULL {
-                self.pos = T::SizeType::default();
-            } else {
-                self.pos = self.pos - self.tree.map(prev_id, |node| T::len(&node.data))
-            }
-            self.node = prev_id;
-        }
-    }
-
-    /// Returns a new cursor to the next node in the tree. If the self
-    /// cursor is on the back node, the new cursor will be null. If the
-    /// self cursor is null, the new cursor will be on the front node.
-    pub fn peek_next(&self) -> Self {
-        let mut ret = self.clone();
-        ret.move_next();
-        ret
-    }
-
-    /// Returns a new cursor to the previous node in the tree. If the
-    /// self cursor is on the front node, the new cursor will be null.
-    /// If the self cursor is null, the new cursor will be on the back
-    /// node.
-    pub fn peek_prev(&self) -> Self {
-        let mut ret = self.clone();
-        ret.move_prev();
-        ret
-    }
-}
-
-impl<'a, T: Adapter> MutCursor<'a, T> {
-    fn new(tree: &'a mut RopeTree<T>, pos: T::SizeType, node: usize) -> Self {
-        Self {
-            tree,
-            pos,
-            node,
-        }
-    }
-
-    /// Returns an immutable reference to the tree the cursor points into.
-    pub fn tree(&self) -> &RopeTree<T> {
-        self.tree
-    }
-
-    /// Returns true if the cursor is null, false otherwise.
-    pub fn is_null(&self) -> bool {
-        self.node == NULL
-    }
-
-    /// Returns the start offset of the node the cursor points to. `None`
-    /// if the cursor is null.
-    pub fn position(&self) -> Option<T::SizeType> {
-        if self.node == NULL {
-            None
-        } else {
-            Some(self.pos)
-        }
-    }
-
-    /// Returns the length of the node the cursor points to. `None` if the
-    /// cursor is null.
-    pub fn len(&self) -> Option<T::SizeType> {
-        if self.node == NULL {
-            None
-        } else {
-            Some(T::len(&self.tree.get(self.node).data))
-        }
-    }
-
-    /// Returns an immutable reference to the node element of the node the
-    /// cursor points to. `None` if the cursor is null.
-    pub fn get(&self) -> Option<&T::Node> {
-        self.tree.try_get(self.node).map(|node| &node.data)
-    }
-
-    /// Provides mutable access to node data via a closure. Mutable access
-    /// must be done through a closure so that the tree can be repaired if
-    /// the length of the node is changed.
-    pub fn mutate<F: Fn(&mut T::Node)>(&mut self, f: F) {
-        let node_id = self.node;
-        if node_id != NULL {
-            let len = self.tree.map(node_id, |node| T::len(&node.data));
-            self.tree.try_map_mut(self.node, |node| {
-                f(&mut node.data);
-            });
-            let new_len = self.tree.map(node_id, |node| T::len(&node.data));
-            if len != new_len {
-                self.tree.repair_weight_only(node_id);
-            }
-        }
-    }
-
-    /// Returns a `Cursor` whose lifetime is tied to the `MutCursor`.
-    pub fn as_cursor(&'a self) -> Cursor<'a, T> {
-        Cursor::new(self.tree, self.pos, self.node)
-    }
-
-    /// Moves the cursor to the next node in the tree. If the cursor is on
-    /// the back node, the cursor will become null. If the cursor is null,
-    /// the cursor will move to the front node.
-    pub fn move_next(&mut self) {
-        let node_id = self.node;
-        if node_id == NULL {
-            self.pos = T::SizeType::default();
-            self.node = self.tree.front_impl();
-        } else {
-            let (next, len) = self.tree.map(self.node, |node| {
-                (node.next, T::len(&node.data))
-            });
-            self.pos = self.pos + len;
-            self.node = next;
-        }
-    }
-
-    /// Move the cursor to the previous node in the tree. If the cursor is
-    /// on the front node, the cursor will become null. If the cursor is
-    /// null, the cursor will move to the back node.
-    pub fn move_prev(&mut self) {
-        let node_id = self.node;
-        if node_id == NULL {
-            let root = self.tree.root;
-            if root == NULL {
-                self.pos = T::SizeType::default();
-                self.node = NULL;
-            } else {
-                let back_id = self.tree.back_impl();
-                self.pos = self.tree.weight(root) - self.tree.map(back_id, |node| T::len(&node.data));
-                self.node = back_id;
-            }
-        } else {
-            let prev_id = self.tree.prev(node_id);
-            if prev_id == NULL {
-                self.pos = T::SizeType::default();
-            } else {
-                self.pos = self.pos - self.tree.map(prev_id, |node| T::len(&node.data))
-            }
-            self.node = prev_id;
-        }
-    }
-
-    /// Returns a new cursor to the next node in the tree. If the self
-    /// cursor is on the back node, the new cursor will be null. If the
-    /// self cursor is null, the new cursor will be on the front node.
-    pub fn peek_next(&'a self) -> Cursor<'a, T> {
-        let mut ret = self.as_cursor();
-        ret.move_next();
-        ret
-    }
-
-    /// Returns a new cursor to the previous node in the tree. If the
-    /// self cursor is on the front node, the new cursor will be null.
-    /// If the self cursor is null, the new cursor will be on the back
-    /// node.
-    pub fn peek_prev(&'a self) -> Cursor<'a, T> {
-        let mut ret = self.as_cursor();
-        ret.move_prev();
-        ret
-    }
-
-    /// Removes the node the cursor points to from the tree. The cursor
-    /// will move to the next node in the tree. If the cursor is null,
-    /// the tree is unchanged and `None` is returned. If the cursor is
-    /// is on the back node, the cursor will be null after removal.
-    pub fn remove(&mut self) -> Option<T::Node> {
-        if self.node == NULL {
-            return None;
-        }
-
-        let node_id = self.node;
-        let (left_id, right_id, parent_id, prev_id, next_id) = self.tree.map(node_id, |node| {
-            (node.left, node.right, node.parent, node.prev, node.next)
-        });
-
-        if left_id == NULL {
-            if right_id == NULL {
-                // no leaves
-                let res = self.tree.try_map_mut(parent_id, |node| {
-                    let left_id = node.left;
-                    if left_id == node_id {
-                        node.left = NULL;
-                        node.prev = prev_id;
-                        true
-                    } else {
-                        node.right = NULL;
-                        node.next = next_id;
-                        false
-                    }
-                });
-                match res {
-                    Some(true) => {
-                        if prev_id != NULL {
-                            self.tree.set_next(prev_id, parent_id)
-                        }
-                        self.tree.repair(parent_id)
-                    },
-                    Some(false) => {
-                        if next_id != NULL {
-                            self.tree.set_prev(next_id, parent_id)
-                        }
-                        self.tree.repair(parent_id);
-                    },
-                    None => self.tree.root = NULL,
-                }
-            } else {
-                // right leaf only
-                let res = self.tree.try_map_mut(parent_id, |node| {
-                    let left_id = node.left;
-                    if left_id == node_id {
-                        node.left = right_id;
-                    } else {
-                        node.right = right_id;
-                    }
-                });
-                if prev_id != NULL {
-                    self.tree.set_next(prev_id, next_id);
-                }
-                if next_id != NULL {
-                    self.tree.set_prev(next_id, prev_id);
-                }
-                self.tree.set_parent(right_id, parent_id);
-                if res.is_none() {
-                    self.tree.root = right_id;
-                } else {
-                    self.tree.repair(parent_id);
-                }
-            }
-        } else if right_id == NULL {
-            // left leaf only
-            let res = self.tree.try_map_mut(parent_id, |node| {
-                let left_id = node.left;
-                if left_id == node_id {
-                    node.left = left_id;
-                } else {
-                    node.right = left_id;
-                }
-            });
-            if prev_id != NULL {
-                self.tree.set_next(prev_id, next_id);
-            }
-            if next_id != NULL {
-                self.tree.set_prev(next_id, prev_id);
-            }
-            self.tree.set_parent(left_id, parent_id);
-            if res.is_none() {
-                self.tree.root = right_id;
-            } else {
-                self.tree.repair(parent_id);
-            }
-        } else {
-            // both leaves
-            self.tree.data_swap(node_id, prev_id);
-            self.node = prev_id;
-            let ret = self.remove();
-            self.node = next_id;
-            return ret;
-        }
-        self.node = next_id;
-        Some(self.tree.dealloc(node_id).data)
-    }
-
-    /// Replaces the data of the node the cursor points to. The old
-    /// data is returned. If the cursor is null, `None` is returned.
-    pub fn replace_with(&mut self, node: T::Node) -> Option<T::Node> {
-        let ret = match self.tree.try_get_mut(self.node) {
-            Some(n) => Some(std::mem::replace(&mut n.data, node)),
-            None => None,
-        };
-        if ret.is_some() {
-            self.tree.repair_weight_only(self.node);
-        }
-        ret
-    }
-
-    /// Insert a node before the node the cursor points to. The cursor
-    /// position is unchanged. If the cursor is null, the new node is
-    /// inserted at the back of the tree.
-    pub fn insert_before(&mut self, node: T::Node) {
-        let node_id = self.node;
-        if node_id == NULL {
-            self.move_prev();
-        }
-        let len = T::len(&node);
-
-        let (left_id, prev_id) = self.tree.map(self.node, |node| {
-            (node.left, node.prev)
-        });
-        if left_id == NULL {
-            let tmp = self.tree.alloc(Node::new(node_id, prev_id, node_id, node));
-            self.tree.set_left(node_id, tmp);
-            self.tree.set_prev(node_id, tmp);
-            self.tree.set_next(prev_id, tmp);
-            self.tree.repair(node_id);
-        } else {
-            let tmp = self.tree.alloc(Node::new(prev_id, prev_id, node_id, node));
-            self.tree.set_right(prev_id, tmp);
-            self.tree.set_prev(node_id, tmp);
-            self.tree.set_next(prev_id, tmp);
-            self.tree.repair(prev_id);
-        }
-        self.pos = self.pos + len;
-    }
-
-    /// Insert a node after the node the cursor points to. The cursor
-    /// position is unchanged. If the cursor is null, the new node is
-    /// inserted at the front of the tree.
-    pub fn insert_after(&mut self, node: T::Node) {
-        let node_id = self.node;
-        if node_id == NULL {
-            self.move_next();
-        }
-
-        let (right_id, next_id) = self.tree.map(self.node, |node| {
-            (node.right, node.next)
-        });
-        if right_id == NULL {
-            let tmp = self.tree.alloc(Node::new(node_id, node_id, next_id, node));
-            self.tree.set_right(node_id, tmp);
-            self.tree.set_next(node_id, tmp);
-            if next_id != NULL {
-                self.tree.set_prev(next_id, tmp);
-            }
-            self.tree.repair(node_id);
-        } else {
-            let tmp = self.tree.alloc(Node::new(next_id, node_id, next_id, node));
-            self.tree.set_left(next_id, tmp);
-            self.tree.set_next(node_id, tmp);
-            self.tree.set_prev(next_id, tmp);
-            self.tree.repair(next_id);
-        }
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct TestAdapter;
-
-    impl Adapter for TestAdapter {
-        type Node = u64;
-        type SizeType = u64;
-        fn len(node: &Self::Node) -> Self::SizeType {
-            *node
-        }
-    }
-
-    type TestTree = RopeTree<TestAdapter>;
-
-    /*
-    fn print_tree_impl(tree: &TestTree, node_id: usize, depth: usize) {
-        if node_id != NULL {
-            print_tree_impl(tree, tree.right(node_id), depth + 1);
-
-            for _ in 0..depth {
-                print!(" ");
-            }
-            println!("{} | depth={} | weight={}", tree.get(node_id).data, tree.depth(node_id), tree.weight(node_id));
-
-            print_tree_impl(tree, tree.left(node_id), depth + 1);
-        }
-    }
-
-
-    fn print_tree(tree: &TestTree) {
-        println!("--------------------------------------------------------------------------------");
-        print_tree_impl(tree, tree.root, 0);
-        println!("--------------------------------------------------------------------------------");
-    }
-    */
-
-    fn new_test_tree() -> TestTree {
-        let mut tree: TestTree = RopeTree::with_root(10);
-        {
-            let mut cursor = tree.front_mut();
-            cursor.insert_after(20);
-            cursor.move_next();
-            cursor.insert_before(30);
-            cursor.move_prev();
-            cursor.insert_after(25);
-            cursor.move_next();
-            cursor.insert_before(15);
-            cursor.move_prev();
-            cursor.move_prev();
-            cursor.insert_after(35);
-            cursor.insert_before(40);
-        }
-        tree
-    }
-
-    #[test]
-    fn insert_test() {
-        let mut tree: TestTree = RopeTree::with_root(10);
-        {
-            let mut cursor = tree.front_mut();
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-            assert_eq!(*cursor.get().unwrap(), 10);
-            assert_eq!(cursor.tree().len(), 10);
-
-            cursor.insert_after(20);
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-            assert_eq!(*cursor.get().unwrap(), 10);
-            assert_eq!(cursor.tree().len(), 30);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 20);
-            assert_eq!(*cursor.get().unwrap(), 20);
-            assert_eq!(cursor.tree().len(), 30);
-
-            cursor.insert_before(30);
-            assert_eq!(cursor.position().unwrap(), 40);
-            assert_eq!(cursor.len().unwrap(), 20);
-            assert_eq!(*cursor.get().unwrap(), 20);
-            assert_eq!(cursor.tree().len(), 60);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-            assert_eq!(cursor.tree().len(), 60);
-
-            cursor.insert_after(25);
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-            assert_eq!(cursor.tree().len(), 85);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 40);
-            assert_eq!(cursor.len().unwrap(), 25);
-            assert_eq!(*cursor.get().unwrap(), 25);
-            assert_eq!(cursor.tree().len(), 85);
-
-            cursor.insert_before(15);
-            assert_eq!(cursor.position().unwrap(), 55);
-            assert_eq!(cursor.len().unwrap(), 25);
-            assert_eq!(*cursor.get().unwrap(), 25);
-            assert_eq!(cursor.tree().len(), 100);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 40);
-            assert_eq!(cursor.len().unwrap(), 15);
-            assert_eq!(*cursor.get().unwrap(), 15);
-            assert_eq!(cursor.tree().len(), 100);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-            assert_eq!(cursor.tree().len(), 100);
-
-            cursor.insert_after(35);
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-            assert_eq!(cursor.tree().len(), 135);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 40);
-            assert_eq!(cursor.len().unwrap(), 35);
-            assert_eq!(*cursor.get().unwrap(), 35);
-            assert_eq!(cursor.tree().len(), 135);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-            assert_eq!(cursor.tree().len(), 135);
-
-            cursor.insert_before(40);
-            assert_eq!(cursor.position().unwrap(), 50);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-            assert_eq!(cursor.tree().len(), 175);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 40);
-            assert_eq!(*cursor.get().unwrap(), 40);
-            assert_eq!(cursor.tree().len(), 175);
-        }
-
-        {
-            let mut cursor = tree.front();
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-            assert_eq!(*cursor.get().unwrap(), 10);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 40);
-            assert_eq!(*cursor.get().unwrap(), 40);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 50);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-            assert_eq!(*cursor.get().unwrap(), 35);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 115);
-            assert_eq!(cursor.len().unwrap(), 15);
-            assert_eq!(*cursor.get().unwrap(), 15);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 130);
-            assert_eq!(cursor.len().unwrap(), 25);
-            assert_eq!(*cursor.get().unwrap(), 25);
-
-            cursor.move_next();
-            assert_eq!(cursor.position().unwrap(), 155);
-            assert_eq!(cursor.len().unwrap(), 20);
-            assert_eq!(*cursor.get().unwrap(), 20);
-        }
-
-        {
-            let mut cursor = tree.back();
-            assert_eq!(cursor.position().unwrap(), 155);
-            assert_eq!(cursor.len().unwrap(), 20);
-            assert_eq!(*cursor.get().unwrap(), 20);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 130);
-            assert_eq!(cursor.len().unwrap(), 25);
-            assert_eq!(*cursor.get().unwrap(), 25);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 115);
-            assert_eq!(cursor.len().unwrap(), 15);
-            assert_eq!(*cursor.get().unwrap(), 15);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-            assert_eq!(*cursor.get().unwrap(), 35);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 50);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(*cursor.get().unwrap(), 30);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 10);
-            assert_eq!(cursor.len().unwrap(), 40);
-            assert_eq!(*cursor.get().unwrap(), 40);
-
-            cursor.move_prev();
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-            assert_eq!(*cursor.get().unwrap(), 10);
-        }
-    }
-
-    #[test]
-    fn lower_bound_test_1() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.lower_bound(60);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-        }
-    }
-
-    #[test]
-    fn lower_bound_test_2() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.lower_bound(80);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-        }
-    }
-
-    #[test]
-    fn lower_bound_test_3() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.lower_bound(81);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 115);
-            assert_eq!(cursor.len().unwrap(), 15);
-        }
-    }
-
-    #[test]
-    fn lower_bound_test_4() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.lower_bound(0);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-        }
-    }
-
-    #[test]
-    fn lower_bound_test_5() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.lower_bound(155);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 155);
-            assert_eq!(cursor.len().unwrap(), 20);
-        }
-    }
-
-    #[test]
-    fn lower_bound_test_6() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.lower_bound(156);
-            assert!(cursor.is_null());
-            assert!(cursor.position().is_none());
-            assert!(cursor.len().is_none());
-        }
-    }
-
-    #[test]
-    fn upper_bound_test_1() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.upper_bound(85);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-        }
-    }
-
-    #[test]
-    fn upper_bound_test_2() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.upper_bound(80);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-        }
-    }
-
-    #[test]
-    fn upper_bound_test_3() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.upper_bound(79);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 50);
-            assert_eq!(cursor.len().unwrap(), 30);
-        }
-    }
-
-    #[test]
-    fn upper_bound_test_4() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.upper_bound(0);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-        }
-    }
-
-    #[test]
-    fn upper_bound_test_5() {
-        let tree = new_test_tree();
-        {
-            let cursor = tree.upper_bound(200);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 155);
-            assert_eq!(cursor.len().unwrap(), 20);
-        }
-    }
-
-    #[test]
-    fn find_test_1() {
-        let tree = new_test_tree();
-        {
-            let (cursor, offset) = tree.find(85);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-            assert_eq!(offset, 5);
-        }
-    }
-
-    #[test]
-    fn find_test_2() {
-        let tree = new_test_tree();
-        {
-            let (cursor, offset) = tree.find(80);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 80);
-            assert_eq!(cursor.len().unwrap(), 35);
-            assert_eq!(offset, 0);
-        }
-    }
-
-    #[test]
-    fn find_test_3() {
-        let tree = new_test_tree();
-        {
-            let (cursor, offset) = tree.find(79);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 50);
-            assert_eq!(cursor.len().unwrap(), 30);
-            assert_eq!(offset, 29);
-        }
-    }
-
-    #[test]
-    fn find_test_4() {
-        let tree = new_test_tree();
-        {
-            let (cursor, offset) = tree.find(0);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 0);
-            assert_eq!(cursor.len().unwrap(), 10);
-            assert_eq!(offset, 0);
-        }
-    }
-
-    #[test]
-    fn find_test_5() {
-        let tree = new_test_tree();
-        {
-            let (cursor, offset) = tree.find(174);
-            assert!(!cursor.is_null());
-            assert_eq!(cursor.position().unwrap(), 155);
-            assert_eq!(cursor.len().unwrap(), 20);
-            assert_eq!(offset, 19);
-        }
-    }
-
-    #[test]
-    fn find_test_6() {
-        let tree = new_test_tree();
-        {
-            let (cursor, offset) = tree.find(175);
-            assert!(cursor.is_null());
-            assert_eq!(offset, 0);
-        }
-    }
-
-    #[test]
-    fn remove_test_1() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(0);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 10);
-        assert_eq!(cursor.tree().len(), 165);
-        assert_eq!(cursor.position().unwrap(), 0);
-        assert_eq!(cursor.len().unwrap(), 40);
-    }
-
-    #[test]
-    fn remove_test_2() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(10);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 40);
-        assert_eq!(cursor.tree().len(), 135);
-        assert_eq!(cursor.position().unwrap(), 10);
-        assert_eq!(cursor.len().unwrap(), 30);
-    }
-
-    #[test]
-    fn remove_test_3() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(50);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 30);
-        assert_eq!(cursor.tree().len(), 145);
-        assert_eq!(cursor.position().unwrap(), 50);
-        assert_eq!(cursor.len().unwrap(), 35);
-    }
-
-    #[test]
-    fn remove_test_4() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(80);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 35);
-        assert_eq!(cursor.tree().len(), 140);
-        assert_eq!(cursor.position().unwrap(), 80);
-        assert_eq!(cursor.len().unwrap(), 15);
-    }
-
-    #[test]
-    fn remove_test_5() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(115);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 15);
-        assert_eq!(cursor.tree().len(), 160);
-        assert_eq!(cursor.position().unwrap(), 115);
-        assert_eq!(cursor.len().unwrap(), 25);
-    }
-
-    #[test]
-    fn remove_test_6() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(130);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 25);
-        assert_eq!(cursor.tree().len(), 150);
-        assert_eq!(cursor.position().unwrap(), 130);
-        assert_eq!(cursor.len().unwrap(), 20);
-    }
-
-    #[test]
-    fn remove_test_7() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.upper_bound_mut(155);
-        let node = cursor.remove();
-        assert!(node.is_some());
-        assert_eq!(node.unwrap(), 20);
-        assert_eq!(cursor.tree().len(), 155);
-        assert!(cursor.is_null());
-        assert!(cursor.position().is_none());
-        assert!(cursor.len().is_none());
-        assert!(cursor.get().is_none());
-    }
-
-    #[test]
-    fn remove_test_8() {
-        let mut tree = new_test_tree();
-        let mut cursor = tree.null_cursor_mut();
-        assert!(cursor.remove().is_none());
-    }
-}
+mod tests;
