@@ -674,6 +674,18 @@ impl<T: Adapter> RopeTree<T> {
         unsafe { std::mem::swap(&mut self.get_mut(b_id).data, &mut *a_ptr) };
     }
 
+    /// Adds a node to the front of the tree.
+    ///
+    /// Logically equivalent to:
+    /// ```
+    /// extern crate hxcvtr_rope_tree;
+    /// use hxcvtr_rope_tree::{RopeTree, Adapter};
+    ///
+    /// fn push_front<T: Adapter>(tree: &mut RopeTree<T>, node: T::Node) {
+    ///     let mut cursor = tree.front_mut();
+    ///     cursor.insert_before(node);
+    /// }
+    /// ```
     pub fn push_front(&mut self, node: T::Node) {
         let front_id = self.front_impl();
         let node_id = self.alloc(Node::new(front_id, NULL, front_id, node));
@@ -685,6 +697,18 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Adds a node to the back of the tree.
+    ///
+    /// Logically equivalent to:
+    /// ```
+    /// extern crate hxcvtr_rope_tree;
+    /// use hxcvtr_rope_tree::{RopeTree, Adapter};
+    ///
+    /// fn push_back<T: Adapter>(tree: &mut RopeTree<T>, node: T::Node) {
+    ///     let mut cursor = tree.back_mut();
+    ///     cursor.insert_after(node);
+    /// }
+    /// ```
     pub fn push_back(&mut self, node: T::Node) {
         let back_id = self.back_impl();
         let node_id = self.alloc(Node::new(back_id, back_id, NULL, node));
@@ -696,6 +720,18 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+    /// Removes a node from the front of the tree.
+    ///
+    /// Logically equivalent to:
+    /// ```
+    /// extern crate hxcvtr_rope_tree;
+    /// use hxcvtr_rope_tree::{RopeTree, Adapter};
+    ///
+    /// fn pop_front<T: Adapter>(tree: &mut RopeTree<T>, node: T::Node) -> Option<T::Node> {
+    ///     let mut cursor = tree.front_mut();
+    ///     cursor.remove()
+    /// }
+    /// ```
     pub fn pop_front(&mut self) -> Option<T::Node> {
         let front_id = self.front_impl();
         if front_id == NULL {
@@ -710,6 +746,19 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
+
+    /// Removes a node from the back of the tree.
+    ///
+    /// Logically equivalent to:
+    /// ```
+    /// extern crate hxcvtr_rope_tree;
+    /// use hxcvtr_rope_tree::{RopeTree, Adapter};
+    ///
+    /// fn pop_back<T: Adapter>(tree: &mut RopeTree<T>, node: T::Node) -> Option<T::Node> {
+    ///     let mut cursor = tree.back_mut();
+    ///     cursor.remove()
+    /// }
+    /// ```
     pub fn pop_back(&mut self) -> Option<T::Node> {
         let back_id = self.back_impl();
         if back_id == NULL {
