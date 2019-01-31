@@ -632,9 +632,11 @@ impl<T: Adapter> RopeTree<T> {
             let (left_id, right_id, parent_id) =
                 self.map(node_id, |node| (node.left, node.right, node.parent));
             let left_weight = self
-                .try_map(left_id, |node| node.weight).unwrap_or_default();
+                .try_map(left_id, |node| node.weight)
+                .unwrap_or_default();
             let right_weight = self
-                .try_map(right_id, |node| node.weight).unwrap_or_default();
+                .try_map(right_id, |node| node.weight)
+                .unwrap_or_default();
             self.map_mut(node_id, |node| {
                 node.weight = left_weight + right_weight + T::len(&node.data);
             });
