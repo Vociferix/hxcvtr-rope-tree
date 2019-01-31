@@ -18,6 +18,7 @@ pub fn new<T: Adapter>(tree: &mut RopeTree<T>, pos: T::SizeType, node: usize) ->
     MutCursor { tree, pos, node }
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl<'a, T: Adapter> MutCursor<'a, T> {
     /// Returns an immutable reference to the tree the cursor points into.
     pub fn tree(&self) -> &RopeTree<T> {

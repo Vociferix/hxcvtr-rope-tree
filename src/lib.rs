@@ -1,3 +1,6 @@
+#![cfg_attr(feature = "cargo-clippy", deny(clippy::all))]
+#![deny(warnings)]
+
 mod cursor;
 mod mut_cursor;
 
@@ -121,6 +124,7 @@ pub trait Adapter {
 ///     }
 /// }
 /// ```
+#[derive(Default)]
 pub struct RopeTree<T: Adapter> {
     arena: Vec<Option<Node<T>>>,
     free: Vec<usize>,
@@ -194,8 +198,8 @@ impl<T: Adapter> RopeTree<T> {
 
     fn try_get(&self, node_id: usize) -> Option<&Node<T>> {
         if node_id < self.arena.len() {
-            match self.arena[node_id] {
-                Some(ref node) => Some(node),
+            match self.arena[node_id].as_ref() {
+                Some(node) => Some(node),
                 None => None,
             }
         } else {
@@ -210,8 +214,8 @@ impl<T: Adapter> RopeTree<T> {
     fn try_get_mut(&mut self, node_id: usize) -> Option<&mut Node<T>> {
         let len = self.arena.len();
         if node_id < len {
-            match self.arena[node_id] {
-                Some(ref mut node) => Some(node),
+            match self.arena[node_id].as_mut() {
+                Some(node) => Some(node),
                 None => None,
             }
         } else {
@@ -475,16 +479,16 @@ impl<T: Adapter> RopeTree<T> {
     }
 
     /// Returns a `Cursor` that points to the back node.
-    pub fn back<'a>(&'a self) -> Cursor<'a, T> {
+    pub fn back(&self) -> Cursor<T> {
         let back_id = self.back_impl();
         self.try_map(back_id, |node| {
             cursor::new(self, self.len() - T::len(&node.data), back_id)
         })
-        .unwrap_or(cursor::new(self, T::SizeType::default(), NULL))
+        .unwrap_or_else(|| cursor::new(self, T::SizeType::default(), NULL))
     }
 
     /// Returns a `MutCursor` that points to the back node.
-    pub fn back_mut<'a>(&'a mut self) -> MutCursor<'a, T> {
+    pub fn back_mut(&mut self) -> MutCursor<T> {
         let back_id = self.back_impl();
         if back_id == NULL {
             mut_cursor::new(self, T::SizeType::default(), NULL)
@@ -510,31 +514,23 @@ impl<T: Adapter> RopeTree<T> {
                         } else {
                             curr = curr + left.weight;
                             let node_len = T::len(&node.data);
-                            if curr + node_len > pos {
-                                return (curr, node_id);
-                            } else {
-                                if node.right == NULL {
-                                    return (curr, node_id);
-                                } else {
-                                    curr = curr + node_len;
-                                    node_id = node.right;
-                                    node = self.get(node_id);
-                                }
-                            }
-                        }
-                    }
-                    None => {
-                        let node_len = T::len(&node.data);
-                        if curr + node_len > pos {
-                            return (curr, node_id);
-                        } else {
-                            if node.right == NULL {
+                            if curr + node_len > pos || node.right == NULL {
                                 return (curr, node_id);
                             } else {
                                 curr = curr + node_len;
                                 node_id = node.right;
                                 node = self.get(node_id);
                             }
+                        }
+                    }
+                    None => {
+                        let node_len = T::len(&node.data);
+                        if curr + node_len > pos || node.right == NULL {
+                            return (curr, node_id);
+                        } else {
+                            curr = curr + node_len;
+                            node_id = node.right;
+                            node = self.get(node_id);
                         }
                     }
                 }
@@ -544,14 +540,14 @@ impl<T: Adapter> RopeTree<T> {
 
     /// Returns a `Cursor` to the node with the greatest offset that is less than `pos`.
     /// The cursor will be null if the tree is empty.
-    pub fn upper_bound<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
+    pub fn upper_bound(&self, pos: T::SizeType) -> Cursor<T> {
         let (pos, node_id) = self.upper_bound_impl(pos);
         cursor::new(self, pos, node_id)
     }
 
     /// Returns a `MutCursor` to the node with the greatest offset that is less than `pos`.
     /// The cursor will be null if the tree is empty.
-    pub fn upper_bound_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
+    pub fn upper_bound_mut(&mut self, pos: T::SizeType) -> MutCursor<T> {
         let (pos, node_id) = self.upper_bound_impl(pos);
         mut_cursor::new(self, pos, node_id)
     }
@@ -576,14 +572,14 @@ impl<T: Adapter> RopeTree<T> {
 
     /// Returns a `Cursor` to the node with the least offset that is greater than `pos`.
     /// The cursor will be null if there are no nodes with offset less than `pos`.
-    pub fn lower_bound<'a>(&'a self, pos: T::SizeType) -> Cursor<'a, T> {
+    pub fn lower_bound(&self, pos: T::SizeType) -> Cursor<T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
         cursor::new(self, pos, node_id)
     }
 
     /// Returns a `MutCursor` to the node with the least offset that is greater than `pos`.
     /// The cursor will be null if there are no nodes with offset less than `pos`.
-    pub fn lower_bound_mut<'a>(&'a mut self, pos: T::SizeType) -> MutCursor<'a, T> {
+    pub fn lower_bound_mut(&mut self, pos: T::SizeType) -> MutCursor<T> {
         let (pos, node_id) = self.lower_bound_impl(pos);
         mut_cursor::new(self, pos, node_id)
     }
@@ -602,7 +598,7 @@ impl<T: Adapter> RopeTree<T> {
     /// A `Cursor` and an offset into the node is returned. The offset into the node is
     /// the offset from the start of the node that is equivalent to `pos`. If the cursor
     /// is null, the offset will always be 0, and is essentially meaningless.
-    pub fn find<'a>(&'a self, pos: T::SizeType) -> (Cursor<'a, T>, T::SizeType) {
+    pub fn find(&self, pos: T::SizeType) -> (Cursor<T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
         (
             cursor::new(self, start, node_id),
@@ -619,7 +615,7 @@ impl<T: Adapter> RopeTree<T> {
     /// A `MutCursor` and an offset into the node is returned. The offset into the node is
     /// the offset from the start of the node that is equivalent to `pos`. If the cursor
     /// is null, the offset will always be 0, and is essentially meaningless.
-    pub fn find_mut<'a>(&'a mut self, pos: T::SizeType) -> (MutCursor<'a, T>, T::SizeType) {
+    pub fn find_mut(&mut self, pos: T::SizeType) -> (MutCursor<T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
         (
             mut_cursor::new(self, pos, node_id),
@@ -636,11 +632,9 @@ impl<T: Adapter> RopeTree<T> {
             let (left_id, right_id, parent_id) =
                 self.map(node_id, |node| (node.left, node.right, node.parent));
             let left_weight = self
-                .try_map(left_id, |node| node.weight)
-                .unwrap_or(T::SizeType::default());
+                .try_map(left_id, |node| node.weight).unwrap_or_default();
             let right_weight = self
-                .try_map(right_id, |node| node.weight)
-                .unwrap_or(T::SizeType::default());
+                .try_map(right_id, |node| node.weight).unwrap_or_default();
             self.map_mut(node_id, |node| {
                 node.weight = left_weight + right_weight + T::len(&node.data);
             });
