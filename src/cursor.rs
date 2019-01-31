@@ -26,11 +26,7 @@ impl<'a, T: Adapter> Clone for Cursor<'a, T> {
 }
 
 pub fn new<T: Adapter>(tree: &RopeTree<T>, pos: T::SizeType, node: usize) -> Cursor<T> {
-    Cursor {
-        tree,
-        pos,
-        node,
-    }
+    Cursor { tree, pos, node }
 }
 
 impl<'a, T: Adapter> Cursor<'a, T> {
@@ -79,9 +75,9 @@ impl<'a, T: Adapter> Cursor<'a, T> {
             self.pos = T::SizeType::default();
             self.node = self.tree.front_impl();
         } else {
-            let (next, len) = self.tree.map(self.node, |node| {
-                (node.next, T::len(&node.data))
-            });
+            let (next, len) = self
+                .tree
+                .map(self.node, |node| (node.next, T::len(&node.data)));
             self.pos = self.pos + len;
             self.node = next;
         }
@@ -99,7 +95,8 @@ impl<'a, T: Adapter> Cursor<'a, T> {
                 self.node = NULL;
             } else {
                 let back_id = self.tree.back_impl();
-                self.pos = self.tree.weight(root) - self.tree.map(back_id, |node| T::len(&node.data));
+                self.pos =
+                    self.tree.weight(root) - self.tree.map(back_id, |node| T::len(&node.data));
                 self.node = back_id;
             }
         } else {

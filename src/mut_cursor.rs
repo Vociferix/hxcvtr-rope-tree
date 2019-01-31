@@ -15,11 +15,7 @@ pub struct MutCursor<'a, T: Adapter> {
 }
 
 pub fn new<T: Adapter>(tree: &mut RopeTree<T>, pos: T::SizeType, node: usize) -> MutCursor<T> {
-    MutCursor {
-        tree,
-        pos,
-        node,
-    }
+    MutCursor { tree, pos, node }
 }
 
 impl<'a, T: Adapter> MutCursor<'a, T> {
@@ -90,9 +86,9 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             self.pos = T::SizeType::default();
             self.node = self.tree.front_impl();
         } else {
-            let (next, len) = self.tree.map(self.node, |node| {
-                (node.next, T::len(&node.data))
-            });
+            let (next, len) = self
+                .tree
+                .map(self.node, |node| (node.next, T::len(&node.data)));
             self.pos = self.pos + len;
             self.node = next;
         }
@@ -110,7 +106,8 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
                 self.node = NULL;
             } else {
                 let back_id = self.tree.back_impl();
-                self.pos = self.tree.weight(root) - self.tree.map(back_id, |node| T::len(&node.data));
+                self.pos =
+                    self.tree.weight(root) - self.tree.map(back_id, |node| T::len(&node.data));
                 self.node = back_id;
             }
         } else {
@@ -178,13 +175,13 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
                             self.tree.set_next(prev_id, parent_id)
                         }
                         self.tree.repair(parent_id)
-                    },
+                    }
                     Some(false) => {
                         if next_id != NULL {
                             self.tree.set_prev(next_id, parent_id)
                         }
                         self.tree.repair(parent_id);
-                    },
+                    }
                     None => self.tree.root = NULL,
                 }
             } else {
@@ -267,9 +264,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
         }
         let len = T::len(&node);
 
-        let (left_id, prev_id) = self.tree.map(self.node, |node| {
-            (node.left, node.prev)
-        });
+        let (left_id, prev_id) = self.tree.map(self.node, |node| (node.left, node.prev));
         if left_id == NULL {
             let tmp = self.tree.alloc(Node::new(node_id, prev_id, node_id, node));
             self.tree.set_left(node_id, tmp);
@@ -295,9 +290,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
             self.move_next();
         }
 
-        let (right_id, next_id) = self.tree.map(self.node, |node| {
-            (node.right, node.next)
-        });
+        let (right_id, next_id) = self.tree.map(self.node, |node| (node.right, node.next));
         if right_id == NULL {
             let tmp = self.tree.alloc(Node::new(node_id, node_id, next_id, node));
             self.tree.set_right(node_id, tmp);

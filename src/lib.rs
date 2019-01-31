@@ -45,7 +45,11 @@ use std::ops::{Add, Sub};
 /// ```
 pub trait Adapter {
     type Node;
-    type SizeType: Add<Output=Self::SizeType> + Sub<Output=Self::SizeType> + PartialOrd + Default + Copy;
+    type SizeType: Add<Output = Self::SizeType>
+        + Sub<Output = Self::SizeType>
+        + PartialOrd
+        + Default
+        + Copy;
     fn len(node: &Self::Node) -> Self::SizeType;
 }
 
@@ -230,7 +234,11 @@ impl<T: Adapter> RopeTree<T> {
         self.try_map(node_id, f).expect("Access on invalid node")
     }
 
-    fn try_map_mut<Ret, F: Fn(&mut Node<T>) -> Ret>(&mut self, node_id: usize, f: F) -> Option<Ret> {
+    fn try_map_mut<Ret, F: Fn(&mut Node<T>) -> Ret>(
+        &mut self,
+        node_id: usize,
+        f: F,
+    ) -> Option<Ret> {
         match self.try_get_mut(node_id) {
             Some(node) => Some(f(node)),
             None => None,
@@ -238,7 +246,8 @@ impl<T: Adapter> RopeTree<T> {
     }
 
     fn map_mut<Ret, F: Fn(&mut Node<T>) -> Ret>(&mut self, node_id: usize, f: F) -> Ret {
-        self.try_map_mut(node_id, f).expect("Access on invalid node")
+        self.try_map_mut(node_id, f)
+            .expect("Access on invalid node")
     }
 
     /// Returns the total size of the tree; the sum of the lengths of each node.
@@ -298,30 +307,38 @@ impl<T: Adapter> RopeTree<T> {
             debug_assert_ne!(node.right, NULL);
             (node.parent, node.left, node.right)
         });
-        let (left_depth, left_weight) = self.try_map(left_id, |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, T::SizeType::default()));
-        let (right_left_id, right_right_id) = self.map(right_id, |node| {
-            (node.left, node.right)
-        });
-        let (right_right_depth, right_right_weight) = self.try_map(right_right_id, |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, T::SizeType::default()));
-        let (right_left_depth, right_left_weight) = self.try_map_mut(right_left_id, |node| {
-            node.parent = node_id;
-            (node.depth, node.weight)
-        }).unwrap_or((0, T::SizeType::default()));
+        let (left_depth, left_weight) = self
+            .try_map(left_id, |node| (node.depth, node.weight))
+            .unwrap_or((0, T::SizeType::default()));
+        let (right_left_id, right_right_id) = self.map(right_id, |node| (node.left, node.right));
+        let (right_right_depth, right_right_weight) = self
+            .try_map(right_right_id, |node| (node.depth, node.weight))
+            .unwrap_or((0, T::SizeType::default()));
+        let (right_left_depth, right_left_weight) = self
+            .try_map_mut(right_left_id, |node| {
+                node.parent = node_id;
+                (node.depth, node.weight)
+            })
+            .unwrap_or((0, T::SizeType::default()));
         let (depth, weight) = self.map_mut(node_id, |node| {
             node.parent = right_id;
             node.right = right_left_id;
-            node.depth = if left_depth > right_left_depth { left_depth } else { right_left_depth } + 1;
+            node.depth = if left_depth > right_left_depth {
+                left_depth
+            } else {
+                right_left_depth
+            } + 1;
             node.weight = left_weight + right_left_weight + T::len(&node.data);
             (node.depth, node.weight)
         });
         self.map_mut(right_id, |node| {
             node.parent = parent_id;
             node.left = node_id;
-            node.depth = if depth > right_right_depth { depth } else { right_right_depth } + 1;
+            node.depth = if depth > right_right_depth {
+                depth
+            } else {
+                right_right_depth
+            } + 1;
             node.weight = weight + right_right_weight + T::len(&node.data);
         });
         if parent_id == NULL {
@@ -343,30 +360,38 @@ impl<T: Adapter> RopeTree<T> {
             debug_assert_ne!(node.left, NULL);
             (node.parent, node.right, node.left)
         });
-        let (right_depth, right_weight) = self.try_map(right_id, |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, T::SizeType::default()));
-        let (left_right_id, left_left_id) = self.map(left_id, |node| {
-            (node.right, node.left)
-        });
-        let (left_left_depth, left_left_weight) = self.try_map(left_left_id, |node| {
-            (node.depth, node.weight)
-        }).unwrap_or((0, T::SizeType::default()));
-        let (left_right_depth, left_right_weight) = self.try_map_mut(left_right_id, |node| {
-            node.parent = node_id;
-            (node.depth, node.weight)
-        }).unwrap_or((0, T::SizeType::default()));
+        let (right_depth, right_weight) = self
+            .try_map(right_id, |node| (node.depth, node.weight))
+            .unwrap_or((0, T::SizeType::default()));
+        let (left_right_id, left_left_id) = self.map(left_id, |node| (node.right, node.left));
+        let (left_left_depth, left_left_weight) = self
+            .try_map(left_left_id, |node| (node.depth, node.weight))
+            .unwrap_or((0, T::SizeType::default()));
+        let (left_right_depth, left_right_weight) = self
+            .try_map_mut(left_right_id, |node| {
+                node.parent = node_id;
+                (node.depth, node.weight)
+            })
+            .unwrap_or((0, T::SizeType::default()));
         let (depth, weight) = self.map_mut(node_id, |node| {
             node.parent = left_id;
             node.left = left_right_id;
-            node.depth = if right_depth > left_right_depth { right_depth } else { left_right_depth } + 1;
+            node.depth = if right_depth > left_right_depth {
+                right_depth
+            } else {
+                left_right_depth
+            } + 1;
             node.weight = right_weight + left_right_weight + T::len(&node.data);
             (node.depth, node.weight)
         });
         self.map_mut(left_id, |node| {
             node.parent = parent_id;
             node.right = node_id;
-            node.depth = if depth > left_left_depth { depth } else { left_left_depth } + 1;
+            node.depth = if depth > left_left_depth {
+                depth
+            } else {
+                left_left_depth
+            } + 1;
             node.weight = weight + left_left_weight + T::len(&node.data);
         });
         if parent_id == NULL {
@@ -454,7 +479,8 @@ impl<T: Adapter> RopeTree<T> {
         let back_id = self.back_impl();
         self.try_map(back_id, |node| {
             cursor::new(self, self.len() - T::len(&node.data), back_id)
-        }).unwrap_or(cursor::new(self, T::SizeType::default(), NULL))
+        })
+        .unwrap_or(cursor::new(self, T::SizeType::default(), NULL))
     }
 
     /// Returns a `MutCursor` that points to the back node.
@@ -463,9 +489,7 @@ impl<T: Adapter> RopeTree<T> {
         if back_id == NULL {
             mut_cursor::new(self, T::SizeType::default(), NULL)
         } else {
-            let back_len = self.map_mut(back_id, |node| {
-                T::len(&node.data)
-            });
+            let back_len = self.map_mut(back_id, |node| T::len(&node.data));
             mut_cursor::new(self, self.len() - back_len, back_id)
         }
     }
@@ -498,7 +522,7 @@ impl<T: Adapter> RopeTree<T> {
                                 }
                             }
                         }
-                    },
+                    }
                     None => {
                         let node_len = T::len(&node.data);
                         if curr + node_len > pos {
@@ -580,7 +604,14 @@ impl<T: Adapter> RopeTree<T> {
     /// is null, the offset will always be 0, and is essentially meaningless.
     pub fn find<'a>(&'a self, pos: T::SizeType) -> (Cursor<'a, T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
-        (cursor::new(self, start, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
+        (
+            cursor::new(self, start, node_id),
+            if node_id == NULL {
+                T::SizeType::default()
+            } else {
+                pos - start
+            },
+        )
     }
 
     /// Finds the node that covers the offset `pos`. Unlike `upper_bound_mut`, the returned
@@ -590,20 +621,26 @@ impl<T: Adapter> RopeTree<T> {
     /// is null, the offset will always be 0, and is essentially meaningless.
     pub fn find_mut<'a>(&'a mut self, pos: T::SizeType) -> (MutCursor<'a, T>, T::SizeType) {
         let (start, node_id) = self.find_impl(pos);
-        (mut_cursor::new(self, pos, node_id), if node_id == NULL { T::SizeType::default() } else { pos - start })
+        (
+            mut_cursor::new(self, pos, node_id),
+            if node_id == NULL {
+                T::SizeType::default()
+            } else {
+                pos - start
+            },
+        )
     }
 
     fn repair_weight_only(&mut self, mut node_id: usize) {
         while node_id != NULL {
-            let (left_id, right_id, parent_id) = self.map(node_id, |node| {
-                (node.left, node.right, node.parent)
-            });
-            let left_weight = self.try_map(left_id, |node| {
-                node.weight
-            }).unwrap_or(T::SizeType::default());
-            let right_weight = self.try_map(right_id, |node| {
-                node.weight
-            }).unwrap_or(T::SizeType::default());
+            let (left_id, right_id, parent_id) =
+                self.map(node_id, |node| (node.left, node.right, node.parent));
+            let left_weight = self
+                .try_map(left_id, |node| node.weight)
+                .unwrap_or(T::SizeType::default());
+            let right_weight = self
+                .try_map(right_id, |node| node.weight)
+                .unwrap_or(T::SizeType::default());
             self.map_mut(node_id, |node| {
                 node.weight = left_weight + right_weight + T::len(&node.data);
             });
@@ -613,15 +650,14 @@ impl<T: Adapter> RopeTree<T> {
 
     fn repair(&mut self, mut node_id: usize) {
         while node_id != NULL {
-            let (left_id, right_id, parent_id) = self.map(node_id, |node| {
-                (node.left, node.right, node.parent)
-            });
-            let (left_depth, left_weight) = self.try_map(left_id, |node| {
-                (node.depth, node.weight)
-            }).unwrap_or((0, T::SizeType::default()));
-            let (right_depth, right_weight) = self.try_map(right_id, |node| {
-                (node.depth, node.weight)
-            }).unwrap_or((0, T::SizeType::default()));
+            let (left_id, right_id, parent_id) =
+                self.map(node_id, |node| (node.left, node.right, node.parent));
+            let (left_depth, left_weight) = self
+                .try_map(left_id, |node| (node.depth, node.weight))
+                .unwrap_or((0, T::SizeType::default()));
+            let (right_depth, right_weight) = self
+                .try_map(right_id, |node| (node.depth, node.weight))
+                .unwrap_or((0, T::SizeType::default()));
             self.map_mut(node_id, |node| {
                 node.depth = if left_depth < right_depth {
                     right_depth + 1
@@ -633,11 +669,18 @@ impl<T: Adapter> RopeTree<T> {
 
             let balance = right_depth as i64 - left_depth as i64;
             if balance < -1 {
-                let (left_left_id, left_right_id) = self.map(left_id, |node| {
-                    (node.left, node.right)
-                });
-                let left_left_depth = if left_left_id == NULL { 0 } else { self.depth(left_left_id) };
-                let left_right_depth = if left_right_id == NULL { 0 } else { self.depth(left_right_id) };
+                let (left_left_id, left_right_id) =
+                    self.map(left_id, |node| (node.left, node.right));
+                let left_left_depth = if left_left_id == NULL {
+                    0
+                } else {
+                    self.depth(left_left_id)
+                };
+                let left_right_depth = if left_right_id == NULL {
+                    0
+                } else {
+                    self.depth(left_right_id)
+                };
                 let balance = left_right_depth as i64 - left_left_depth as i64;
                 if balance > 0 {
                     self.rotate_left(left_id);
@@ -646,11 +689,18 @@ impl<T: Adapter> RopeTree<T> {
                     self.rotate_right(node_id);
                 }
             } else if balance > 1 {
-                let (right_left_id, right_right_id) = self.map(right_id, |node| {
-                    (node.left, node.right)
-                });
-                let right_left_depth = if right_left_id == NULL { 0 } else { self.depth(right_left_id) };
-                let right_right_depth = if right_right_id == NULL { 0 } else { self.depth(right_right_id) };
+                let (right_left_id, right_right_id) =
+                    self.map(right_id, |node| (node.left, node.right));
+                let right_left_depth = if right_left_id == NULL {
+                    0
+                } else {
+                    self.depth(right_left_id)
+                };
+                let right_right_depth = if right_right_id == NULL {
+                    0
+                } else {
+                    self.depth(right_right_id)
+                };
                 let balance = right_right_depth as i64 - right_left_depth as i64;
                 if balance < 0 {
                     self.rotate_right(right_id);
@@ -745,7 +795,6 @@ impl<T: Adapter> RopeTree<T> {
             Some(self.dealloc(front_id).data)
         }
     }
-
 
     /// Removes a node from the back of the tree.
     ///
