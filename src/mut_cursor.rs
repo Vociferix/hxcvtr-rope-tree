@@ -59,7 +59,7 @@ impl<'a, T: Adapter> MutCursor<'a, T> {
     /// Provides mutable access to node data via a closure. Mutable access
     /// must be done through a closure so that the tree can be repaired if
     /// the length of the node is changed.
-    pub fn mutate<F: Fn(&mut T::Node)>(&mut self, f: F) {
+    pub fn mutate<F: FnMut(&mut T::Node)>(&mut self, mut f: F) {
         let node_id = self.node;
         if node_id != NULL {
             let len = self.tree.map(node_id, |node| T::len(&node.data));

@@ -238,10 +238,10 @@ impl<T: Adapter> RopeTree<T> {
         self.try_map(node_id, f).expect("Access on invalid node")
     }
 
-    fn try_map_mut<Ret, F: Fn(&mut Node<T>) -> Ret>(
+    fn try_map_mut<Ret, F: FnMut(&mut Node<T>) -> Ret>(
         &mut self,
         node_id: usize,
-        f: F,
+        mut f: F,
     ) -> Option<Ret> {
         match self.try_get_mut(node_id) {
             Some(node) => Some(f(node)),
@@ -249,7 +249,7 @@ impl<T: Adapter> RopeTree<T> {
         }
     }
 
-    fn map_mut<Ret, F: Fn(&mut Node<T>) -> Ret>(&mut self, node_id: usize, f: F) -> Ret {
+    fn map_mut<Ret, F: FnMut(&mut Node<T>) -> Ret>(&mut self, node_id: usize, f: F) -> Ret {
         self.try_map_mut(node_id, f)
             .expect("Access on invalid node")
     }
